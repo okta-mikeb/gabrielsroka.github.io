@@ -25,20 +25,20 @@
     } else if (location.host.match(/-admin/)) { // Admin pages
         rockstarMenu = rockstarInit();
 
-        if (location.pathname == "/admin/users") {
+        if (location.pathname === "/admin/users") {
             enhanceDirectoryPeople();
-        } else if (location.pathname.match("/admin/user/")) {
-            directoryPerson();
-        } else if (location.pathname == "/admin/groups") {
+        } else if (location.pathname.startsWith("/admin/user/")) {
+            enhanceDirectoryPerson();
+        } else if (location.pathname === "/admin/groups") {
             enhanceDirectoryGroups();
-        } else if (location.pathname == "/admin/access/admins") {
-            securityAdministrators();
-        } else if (location.pathname.match("/report/system_log_2")) {
-            systemLog();
-        } else if (location.pathname.match("/admin/app/active_directory")) {
-            activeDirectory();
-        } else if (location.pathname == "/admin/access/identity-providers") {
-            identityProviders();
+        } else if (location.pathname === "/admin/access/admins") {
+            enhanceSecurityAdministrators();
+        } else if (location.pathname.startsWith("/report/system_log_2")) {
+            enhanceSystemLog();
+        } else if (location.pathname.startsWith("/admin/app/active_directory")) {
+            enhanceActiveDirectory();
+        } else if (location.pathname === "/admin/access/identity-providers") {
+            enhanceIdentityProviders();
         }
 
         // Create export object menu items
@@ -62,12 +62,14 @@
             clearInterval(intervalID);
         }, 200);
 
-    } else if (location.pathname == "/app/UserHome") { // User home page (non-admin)
-        menuPopup = createPopup("rockstar", true);
-        userHome();
-        //} else if (location.host == "developer.okta.com" && location.pathname.startsWith("/docs/reference/api/")) {
-        //    tryAPI();
+    } else if (location.pathname.startsWith("/app/UserHome")) { // User home page (non-admin)
+        rockstarMenu = rockstarInit();
+        console.log('Rockstar menu created');
+        enhanceUserHome();
     }
+    //} else if (location.host == "developer.okta.com" && location.pathname.startsWith("/docs/reference/api/")) {
+    //    tryAPI();
+    // }
 
     // Admin functions
     function enhanceDirectoryPeople() {
@@ -91,15 +93,17 @@
         });
     }
 
-    function directoryPerson() {
+    function enhanceDirectoryPerson() {
         var userId = location.pathname.split("/")[5];
         var user;
-        getJSON(`/api/v1/users/${userId}`).then(aUser => {
-            user = aUser;
-            var ad = user.credentials.provider.type == "ACTIVE_DIRECTORY";
-            $(".subheader").html(`${e(user.profile.login)}, email: ${e(user.profile.email)}${ad ? ", " : ""}`);
+
+        // Retrieve the user record from the API
+        getJSON(`/api/v1/users/${userId}`).then(apiUser => {
+            user = apiUser;
+            var isADUser = user.credentials.provider.type == "ACTIVE_DIRECTORY";
+            $(".subheader").html(`${e(user.profile.login)}, email: ${e(user.profile.email)}${isADUser ? ", " : ""}`);
             document.title += ` - ${e(user.profile.firstName)} ${e(user.profile.lastName)}`;
-            if (ad) {
+            if (isADUser) {
                 function showADs() {
                     getJSON(`/api/v1/apps?filter=user.id+eq+"${userId}"&expand=user/${userId}&limit=200&q=active_directory`).then(appUsers => {
                         var adPopup = createPopup("Active Directory");
@@ -134,10 +138,15 @@
             const logo = user.credentials.provider.type == "LDAP" ? "ldap_sun_one" : user.credentials.provider.type.toLowerCase();
             userPopup.html(`<span class='icon icon-24 group-logos-24 logo-${logo}'></span><br><br><pre>${e(toString(user))}</pre>`);
         }
-        createDiv("Show User", menuPopup, showUser);
-        createPrefixA("<li class=option>", "<span class='icon person-16-gray'></span>Show User", ".okta-dropdown-list", showUser);
+        createMenuItem("Show User", rockstarMenu, showUser);
+        createPrefixA(
+            '<li class="okta-dropdown-option option">',
+            '<span class="icon person-16-gray"></span>Show User',
+            ".okta-dropdown-list",
+            showUser
+        );
 
-        createDiv("Verify Factors", menuPopup, async function () {
+        createMenuItem("Verify Factors", rockstarMenu, async function () {
             function mapFactors(factor) {
                 // Duo probably won't work, it seems to need a UI/SDK/etc.
                 // WebAuthn probably won't work, either, since the user and browser have to be the same.
@@ -227,7 +236,7 @@
             };
         });
 
-        createDiv("Administrator Roles", menuPopup, function () {
+        createMenuItem("Administrator Roles", rockstarMenu, () => {
             var allRoles = [
                 { type: "SUPER_ADMIN", label: "Super" },
                 { type: "ORG_ADMIN", label: "Organization" },
@@ -277,10 +286,10 @@
             }
         });
 
-        createDiv("Set Password", menuPopup, function () {
+        createMenuItem("Set Password", rockstarMenu, () => {
             const passwordPopup = createPopup("Set Password");
             const passwordForm = passwordPopup[0].appendChild(document.createElement("form")); // Cuz "<form>" didn't work.
-            passwordForm.innerHTML = "<input id=newPassword type=password><br><button class='link-button'>Set</button>";
+            passwordForm.innerHTML = '<input id="newPassword" type="password"><br><button class="link-button" style="margin-top: 6px;">Set</button>';
             newPassword.focus(); // Cuz "autofocus" didn't work.
             passwordForm.onsubmit = function (event) {
                 const url = `/api/v1/users/${userId}`; // TODO: `/api/v1/users/${userId}/lifecycle/expire_password?tempPassword=false`
@@ -345,23 +354,23 @@
         });
     }
 
-    function securityAdministrators() {
-        createDiv("Export Administrators", menuPopup, function () { // TODO: consider merging into exportObjects(). Will the Link headers be a problem?
+    function enhanceSecurityAdministrators() {
+        createMenuItem("Export Administrators", rockstarMenu, () => { // TODO: consider merging into exportObjects(). Will the Link headers be a problem?
             const adminsPopup = createPopup("Administrators");
             adminsPopup.html('This report has been deprecated. Please use the built-in report.');
         });
     }
-    function systemLog() {
-        createDiv("Expand All", menuPopup, () => {
+    function enhanceSystemLog() {
+        createMenuItem("Expand All", rockstarMenu, () => {
             $(".row-expander").each(function () { this.click() });
             $(".expand-all-details a").each(function () { this.click() });
         });
-        createDiv("Expand Each Row", menuPopup, () => {
+        createMenuItem("Expand Each Row", rockstarMenu, () => {
             $(".row-expander").each(function () { this.click() });
         });
     }
-    function activeDirectory() {
-        createDiv("Add OU Tooltips", menuPopup, () => {
+    function enhanceActiveDirectory() {
+        createMenuItem("Add OU Tooltips", rockstarMenu, () => {
             addTooltips("user");
             addTooltips("group");
 
@@ -374,7 +383,7 @@
                 });
             }
         });
-        createDiv("Export OUs", menuPopup, () => {
+        createMenuItem("Export OUs", rockstarMenu, () => {
             var ouPopup = createPopup("OUs");
             var ous = [];
             exportOUs("user");
@@ -388,8 +397,8 @@
             }
         });
     }
-    function identityProviders() {
-        createDiv("SAML IdPs", menuPopup, () => {
+    function enhanceIdentityProviders() {
+        createMenuItem("SAML IdPs", rockstarMenu, () => {
             getJSON(`/api/v1/idps?type=SAML2`).then(idps => {
                 getJSON('/api/v1/idps/credentials/keys').then(keys => {
                     var idpPopup = createPopup("SAML IdPs");
@@ -437,12 +446,12 @@
                     rule => toCSV(rule.id, rule.name, rule.status, rule.conditions.expression.value, rule.actions.assignUserToGroups.groupIds.join(";"), rule.conditions.people ? rule.conditions.people.users.exclude.length : 0));
             });
         } else if (location.pathname == "/admin/apps/active") {
-            createDiv("Export Apps", menuPopup, function () {
+            createMenuItem("Export Apps", rockstarMenu, () => {
                 startExport("Apps", "/api/v1/apps", "id,label,name,userNameTemplate,features,signOnMode,status,embedLinks",
                     app => toCSV(app.id, app.label, app.name, app.credentials.userNameTemplate.template, app.features.join(', '), app.signOnMode, app.status,
                         app._links.appLinks.map(a => a.href).join(', ')));
             });
-            createDiv("Export App Notes (experimental)", menuPopup, function () {
+            createMenuItem("Export App Notes (experimental)", rockstarMenu, () => {
                 startExport("App Notes", "/api/v1/apps?limit=2", "id,label,name,userNameTemplate,features,signOnMode,status,endUserAppNotes,adminAppNotes", async app => {
                     var response = await fetch(`/admin/app/${app.name}/instance/${app.id}/settings/general`);
                     var html = await response.text();
@@ -453,7 +462,7 @@
                     return toCSV(app.id, app.label, app.name, app.credentials.userNameTemplate.template, app.features.join(', '), app.signOnMode, app.status, enduserAppNotes, adminAppNotes);
                 });
             });
-            createDiv("Export App Sign On Policies (experimental)", menuPopup, function () {
+            createMenuItem("Export App Sign On Policies (experimental)", rockstarMenu, () => {
                 startExport("App Sign On Policies", "/api/v1/apps?limit=2", "id,label,name,userNameTemplate,features,signOnMode,status,policies", async app => {
                     var response = await fetch(`/admin/app/instance/${app.id}/app-sign-on-policy-list`);
                     var html = await response.text();
@@ -464,7 +473,7 @@
                     return toCSV(app.id, app.label, app.name, app.credentials.userNameTemplate.template, app.features.join(', '), app.signOnMode, app.status, policies);
                 });
             });
-            createDiv("Export Apps (custom)", menuPopup, function () {
+            createMenuItem("Export Apps (custom)", rockstarMenu, () => {
                 exportPopup = createPopup("Export Apps");
                 exportPopup.append("<br>Columns to export");
                 var checkboxDiv = $("<div style='overflow-y: scroll; height: 152px; width: 300px; border: 1px solid #ccc;'></div>").appendTo(exportPopup);
@@ -521,42 +530,42 @@
                 });
             });
         } else if (location.pathname == "/admin/access/networks") {
-            createDiv("Export Networks", menuPopup, function () {
+            createMenuItem("Export Networks", rockstarMenu, () => {
                 startExport("Zones", "/api/v1/zones", "id,name,gateways,gatewayType,zoneType",
                     zone => toCSV(zone.id, zone.name, zone.gateways && zone.gateways.map(gateway => gateway.value).join(', '),
                         zone.gateways && zone.gateways.map(gateway => gateway.type).join(', '), zone.type));
             });
         } else if (location.pathname.match("/admin/devices-inventory")) {
-            createDiv("Export Devices", menuPopup, function () {
+            createMenuItem("Export Devices", rockstarMenu, () => {
                 startExport("Devices", "/api/v1/devices", "id,displayName,platform,manufacturer,model,osVersion,serialNumber,imei,meid,udid,sid",
                     device => toCSV(device.id, device.profile.displayName, device.profile.platform, device.profile.manufacturer, device.profile.model,
                         device.profile.osVersion, device.profile.serialNumber, device.profile.imei, device.profile.meid, device.profile.udid, device.profile.sid));
             });
         } else if (location.pathname == "/reports/user/yubikey") {
-            createDiv("Export YubiKeys", menuPopup, function () {
+            createMenuItem("Export YubiKeys", rockstarMenu, () => {
                 startExport("YubiKeys", "/api/v1/org/factors/yubikey_token/tokens?expand=user", "keyId,serial,status,userId,firstName,lastName,login,lastVerified",
                     token => toCSV(token.id, token.profile.serial, token.status, token._embedded?.user.id, token._embedded?.user.profile.firstName,
                         token._embedded?.user.profile.lastName, token._embedded?.user.profile.login, token.lastVerified), 'user');
             });
         } else if (location.pathname == "/admin/universaldirectory") {
-            createDiv("Export Mappings", menuPopup, function () {
+            createMenuItem("Export Mappings", rockstarMenu, () => {
                 startExport("Mappings", "/api/v1/mappings", "id,sourceId,sourceName,sourceType,targetId,targetName,targetType",
                     mapping => toCSV(mapping.id, mapping.source.id, mapping.source.name, mapping.source.type,
                         mapping.target.id, mapping.target.name, mapping.target.type));
             });
         } else if (userId = getUserId()) {
-            createDiv("Export Group Memberships", menuPopup, function () {
+            createMenuItem("Export Group Memberships", rockstarMenu, () => {
                 startExport("Group Memberships", `/api/v1/users/${userId}/groups`, "id,name,description,type",
                     group => toCSV(group.id, group.profile.name, group.profile.description || "", group.type));
             });
         } else if (appId = getAppId()) {
             const atos = a => a ? a.join(";") : "";
-            createDiv("Export App Users", menuPopup, function () {
+            createMenuItem("Export App Users", rockstarMenu, () => {
                 startExport("App Users", `/api/v1/apps/${appId}/users?limit=500`, "id,userName,scope,externalId,firstName,lastName,syncState,salesforceGroups,samlRoles,groupName",
                     appUser => toCSV(appUser.id, appUser.credentials ? appUser.credentials.userName : "", appUser.scope, appUser.externalId,
                         appUser.profile.firstName, appUser.profile.lastName, appUser.syncState, atos(appUser.profile.salesforceGroups), atos(appUser.profile.samlRoles), appUser._links.group?.name));
             });
-            createDiv("Export App Groups", menuPopup, function () {
+            createMenuItem("Export App Groups", rockstarMenu, () => {
                 startExport("App Groups", `/api/v1/apps/${appId}/groups?expand=group`,
                     "id,name,licenses,roles,role,salesforceGroups,featureLicenses,publicGroups",
                     appGroup => toCSV(appGroup.id, appGroup._embedded.group.profile.name, atos(appGroup.profile.licenses),
@@ -564,11 +573,11 @@
                         atos(appGroup.profile.featureLicenses), atos(appGroup.profile.publicGroups)), 'group');
             });
         } else if (groupId = getGroupId()) {
-            createDiv("Export Group Members", menuPopup, function () {
+            createMenuItem("Export Group Members", rockstarMenu, () => {
                 startExport("Group Members", `/api/v1/groups/${groupId}/users`, "id,login,firstName,lastName,status",
                     user => toCSV(user.id, user.profile.login, user.profile.firstName, user.profile.lastName, user.status));
             });
-            createDiv("Export Group Members (custom)", menuPopup, () => exportUsers('Group Members', `/api/v1/groups/${groupId}/users`, false));
+            createMenuItem("Export Group Members (custom)", rockstarMenu, () => exportUsers('Group Members', `/api/v1/groups/${groupId}/users`, false));
             // TODO: what to do here?
             // } else {
             //     exportPopup = createPopup("Export");
@@ -788,8 +797,9 @@
     }
 
     // User functions
-    function userHome() {
-        createDiv("Show SSO", menuPopup, function () {
+    function enhanceUserHome() {
+        console.log('Enhancing user home');
+        createMenuItem("Show SSO", rockstarMenu, () => {
             var ssoPopup;
             var label = "Show SSO";
             var labels = document.getElementsByClassName("app-button-name");
@@ -888,11 +898,11 @@
                 setTimeout(() => $(".support-text[data-se='last-login-time']").attr('title', msg), 1000);
             }
         });
-        apiExplorer();
+        addAPIExplorer();
 
         var tinyStyle;
         if (localStorage.rockstarTinyApps) tinyApps();
-        createDiv("Tiny Apps", menuPopup, function () {
+        createMenuItem("Tiny Apps", rockstarMenu, () => {
             localStorage.rockstarTinyApps = localStorage.rockstarTinyApps ? '' : 'true';
             tinyApps();
         });
@@ -916,7 +926,7 @@
             }`;
         }
 
-        createDiv("All Tiny Apps", menuPopup, async function () {
+        createMenuItem("All Tiny Apps", rockstarMenu, async function () {
             const response = await fetch(`/api/v1/users/me/appLinks`);
             const links = (await response.json())
                 .sort((link1, link2) => link1.sortOrder < link2.sortOrder ? -1 : 1);
@@ -940,7 +950,7 @@
                 this.disconnect();
                 quickAccess();
             }).observe(qa, { attributes: true, attributeFilter: ['style'] });
-            createDiv("Quick Access", menuPopup, function () {
+            createMenuItem("Quick Access", rockstarMenu, () => {
                 localStorage.rockstarQuickAccess = localStorage.rockstarQuickAccess ? '' : 'true';
                 quickAccess();
             });
@@ -1164,14 +1174,14 @@
         createPrefixA("", html, parent, clickHandler);
     }
     function createPrefixA(prefix, html, parent, clickHandler) {
-        $(`${prefix}<a style='cursor: pointer'>${html}</a>`).appendTo(parent).click(clickHandler);
+        $(`${prefix}<a class="icon-16" style="cursor: pointer">${html}</a>`).appendTo(parent).click(clickHandler);
     }
     function createDivA(html, parent, clickHandler) {
         $(`<div><a style='cursor: pointer' class='link-button'>${html}</a></div>`).appendTo(parent).click(clickHandler);
     }
 
     function createMenuItem(text, parentNode, clickHandler) {
-        $(`<a class="rockstar" href="#">${text}</a>`)
+        $(`<span class="rockstar">${text}</span>`)
             .appendTo(parentNode)
             .click(clickHandler);
     }

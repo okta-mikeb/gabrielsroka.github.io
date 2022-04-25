@@ -40,16 +40,17 @@
     z-index: 1;
 }
 
-.rockstar-dropdown-content a.rockstar {
+.rockstar-dropdown-content .rockstar {
     color: black;
     padding: 4px 8px;
     text-decoration: none;
     display: block;
     white-space: nowrap;
+    cursor: pointer;
 }
 
 /* Change color of dropdown links on hover */
-.rockstar-dropdown-content a:hover {
+.rockstar-dropdown-content .rockstar:hover {
     background-color: #ddd;
 }
 
