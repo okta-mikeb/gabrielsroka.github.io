@@ -1,12 +1,12 @@
 {
-  "manifest_version": 2,
-  "name": "rockstar",
-  "version": "0.23",
+  "manifest_version": 3,
+  "name": "rockstar-mod",
+  "version": "0.3",
   "description": "rockstar adds a bunch of great features to Okta, like exporting to a CSV.",
   "omnibox": {
     "keyword": "rs"
   },
-  "page_action": {
+  "action": {
     "default_popup": "menu.html"
   },
   "icons": {
@@ -14,8 +14,7 @@
     "128": "rockstar_icon_128.png"
   },
   "background": {
-    "scripts": ["background.js"],
-    "persistent": false
+    "service_worker": "background.js"
   },
   "permissions": ["declarativeContent"],
   "content_scripts": [
@@ -26,7 +25,8 @@
         "https://*.oktapreview.com/*"
       ],
       "js": ["jquery-1.12.4.min.PATCHED.js", "rockstar.js"],
-      "css": ["rockstar.css"]
+      "css": ["rockstar.css"],
+      "run_at": "document_end"
     }
   ]
 }

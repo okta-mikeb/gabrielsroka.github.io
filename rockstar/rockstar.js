@@ -10,25 +10,27 @@
     //   Many: enhanced menus
     // and more to come...
 
-    var mainPopup;
+    let mainPopup;
+    let rockstarMenu;
     $ = window.$ || window.jQueryCourage;
-    const headers = {'X-Okta-User-Agent-Extended': 'rockstar'};
+    const headers = { 'X-Okta-User-Agent-Extended': 'rockstar' };
 
     if (location.href == "https://gabrielsroka.github.io/rockstar/") {
         alert("To install rockstar, open your bookmark toolbar, then drag and drop it. To use it, login to Okta or Okta Admin, then click rockstar. See the Usage instructions on this page.");
         return;
     }
     if (location.pathname.match("^/(api|oauth2|\\.well-known)/")) {
-        formatJSON();
+        // DISABLE JSON Formatting - other Chrome Extensions do this better
+        // formatJSON();
     } else if (location.host.match(/-admin/)) { // Admin pages
-        mainPopup = createPopup("rockstar", true);
-        quickUpdate();
+        rockstarMenu = rockstarInit();
+
         if (location.pathname == "/admin/users") {
-            directoryPeople();
+            enhanceDirectoryPeople();
         } else if (location.pathname.match("/admin/user/")) {
             directoryPerson();
         } else if (location.pathname == "/admin/groups") {
-            directoryGroups();
+            enhanceDirectoryGroups();
         } else if (location.pathname == "/admin/access/admins") {
             securityAdministrators();
         } else if (location.pathname.match("/report/system_log_2")) {
@@ -39,37 +41,40 @@
             identityProviders();
         }
 
+        // Create export object menu items
+        addExportObjects();
+
+        // Add the API explorer menu item
+        addAPIExplorer();
+
+        // Add additional menu helper navigation (old admin UI)
         $("<li><a href='/admin/apps/add-app'>Integration Network</a>").appendTo("#nav-admin-apps-2");
         $("<li><a href='/admin/access/api/tokens'>API Tokens</a>").appendTo("#nav-admin-access-2");
+
+        // Add additional menu helper navigation (new admin UI)
+        // TODO: Using mutation observers would probably be better
         var count = 0;
-        const intervalID = setInterval(() => { // new admin
+        const intervalID = setInterval(() => {
             if (count++ == 25) clearInterval(intervalID);
             if (!document.querySelector('[data-se=o-side-nav-item-APPLICATIONS] ul')) return;
             $("<li><a class='nav-item--wrapper' href='/admin/apps/add-app'><p class='nav-item--label'>Integration Network</p></a>").appendTo('[data-se=o-side-nav-item-APPLICATIONS] ul');
             $("<li><a class='nav-item--wrapper' href='/admin/access/api/tokens'><p class='nav-item--label'>API Tokens</p></a>").appendTo('[data-se=o-side-nav-item-SECURITY] ul');
             clearInterval(intervalID);
-        }, 200);        
-        exportObjects();
-        //createPrefixA("<li>", "Export Objects", "#nav-admin-reports-2", exportObjects);
-        apiExplorer();
-    } else if (location.pathname == "/app/UserHome") { // User home page (non-admin)
-        mainPopup = createPopup("rockstar", true);
-        quickUpdate();
-        userHome();
-    //} else if (location.host == "developer.okta.com" && location.pathname.startsWith("/docs/reference/api/")) {
-    //    tryAPI();
-    }
+        }, 200);
 
-    function quickUpdate() {
-        $(`<a href='https://www.youtube.com/watch?v=mNTThKVjztc&list=PLZ4_Rj_Aw2Ym-NkC8SFB6wuSfBiBto_6C' target='_blank' rel='noopener'>rockstar overview (youtube)</a><br><br>`).appendTo(mainPopup);
+    } else if (location.pathname == "/app/UserHome") { // User home page (non-admin)
+        menuPopup = createPopup("rockstar", true);
+        userHome();
+        //} else if (location.host == "developer.okta.com" && location.pathname.startsWith("/docs/reference/api/")) {
+        //    tryAPI();
     }
 
     // Admin functions
-    function directoryPeople() {
-        createDiv("Search Users (experimental)", mainPopup, () => {
+    function enhanceDirectoryPeople() {
+        createMenuItem("Search Users (experimental)", rockstarMenu, () => {
             searcher({
                 url: "/api/v1/users",
-                data() {return {q: this.search, limit: this.limit};},
+                data() { return { q: this.search, limit: this.limit }; },
                 limit: 15, // 15 is the max limit when using q.
                 comparer: (user1, user2) => (user1.profile.firstName + user1.profile.lastName).localeCompare(user2.profile.firstName + user2.profile.lastName),
                 template(user) {
@@ -85,6 +90,7 @@
             });
         });
     }
+
     function directoryPerson() {
         var userId = location.pathname.split("/")[5];
         var user;
@@ -128,28 +134,28 @@
             const logo = user.credentials.provider.type == "LDAP" ? "ldap_sun_one" : user.credentials.provider.type.toLowerCase();
             userPopup.html(`<span class='icon icon-24 group-logos-24 logo-${logo}'></span><br><br><pre>${e(toString(user))}</pre>`);
         }
-        createDiv("Show User", mainPopup, showUser);
+        createDiv("Show User", menuPopup, showUser);
         createPrefixA("<li class=option>", "<span class='icon person-16-gray'></span>Show User", ".okta-dropdown-list", showUser);
 
-        createDiv("Verify Factors", mainPopup, async function () {
+        createDiv("Verify Factors", menuPopup, async function () {
             function mapFactors(factor) {
                 // Duo probably won't work, it seems to need a UI/SDK/etc.
                 // WebAuthn probably won't work, either, since the user and browser have to be the same.
                 // Same is probably true for at least some of the factors not listed below.
                 const supportedFactors = [
-                    {provider: 'OKTA', type: 'push', icon: "okta-otp", name: "Okta Verify with Push", sort: 0},
-                    {provider: 'OKTA', type: "token:software:totp", icon: "okta-otp", name: "Okta Verify (OTP)", sort: 1},
-                    {provider: 'GOOGLE', type: 'token:software:totp', icon: "otp", name: "Google Authenticator", sort: 2},
-                    {provider: 'CUSTOM', type: 'token:hotp', icon: 'hotp', name: factor.vendorName, sort: 3},
-                    {provider: 'OKTA', type: 'sms', icon: "sms", name: "SMS Authentication", sort: 4},
-                    {provider: 'OKTA', type: 'call', icon: "call", name: "Voice Call Authentication", sort: 5},
-                    {provider: 'OKTA', type: 'email', icon: "email", name: "Email Authentication", sort: 6},
-                    {provider: 'OKTA', type: 'question', icon: "question", name: "Security Question", sort: 7}
+                    { provider: 'OKTA', type: 'push', icon: "okta-otp", name: "Okta Verify with Push", sort: 0 },
+                    { provider: 'OKTA', type: "token:software:totp", icon: "okta-otp", name: "Okta Verify (OTP)", sort: 1 },
+                    { provider: 'GOOGLE', type: 'token:software:totp', icon: "otp", name: "Google Authenticator", sort: 2 },
+                    { provider: 'CUSTOM', type: 'token:hotp', icon: 'hotp', name: factor.vendorName, sort: 3 },
+                    { provider: 'OKTA', type: 'sms', icon: "sms", name: "SMS Authentication", sort: 4 },
+                    { provider: 'OKTA', type: 'call', icon: "call", name: "Voice Call Authentication", sort: 5 },
+                    { provider: 'OKTA', type: 'email', icon: "email", name: "Email Authentication", sort: 6 },
+                    { provider: 'OKTA', type: 'question', icon: "question", name: "Security Question", sort: 7 }
                 ];
                 const type = factor.factorType;
                 const supported = supportedFactors.find(f => f.provider == factor.provider && f.type == type);
-                if (!supported || factor.status != 'ACTIVE') return {supported: false};
-                const {icon, name, sort} = supported;
+                if (!supported || factor.status != 'ACTIVE') return { supported: false };
+                const { icon, name, sort } = supported;
                 const radio = `<label><input type=radio name=factor value='${factor.id}'><span class="mfa-${icon}-30 valign-middle margin-l-10 margin-r-5"></span>` +
                     `${name}</label><br>`;
                 if (type == 'question') {
@@ -161,7 +167,7 @@
                     inputType = 'text';
                     field = 'passCode';
                 }
-                return {id: factor.id, supported: true, sort, radio, type, name, html, inputType, field};
+                return { id: factor.id, supported: true, sort, radio, type, name, html, inputType, field };
             }
             const verifyPopup = createPopup("Verify Factors");
             try {
@@ -186,7 +192,7 @@
                 const factor = factors.find(f => f.id == this.factor.value);
                 const url = `/api/v1/users/${userId}/factors/${factor.id}/verify`;
                 if (factor.type == "push") {
-                    postJSON({url}).then(response => {
+                    postJSON({ url }).then(response => {
                         const intervalMs = 4000; // time in ms.
                         verifyPopup.html(response.factorResult);
                         const intervalID = setInterval(async () => {
@@ -200,8 +206,8 @@
                     }).fail(jqXHR => verifyPopup.html(e(jqXHR.responseJSON.errorSummary)));
                 } else {
                     if (factor.type == "sms" || factor.type == "call" || factor.type == "email") {
-                        postJSON({url})
-                        .fail(jqXHR => verifyPopup.html(e(jqXHR.responseJSON.errorSummary)));
+                        postJSON({ url })
+                            .fail(jqXHR => verifyPopup.html(e(jqXHR.responseJSON.errorSummary)));
                     }
                     verifyPopup.html("");
                     const verifyForm = verifyPopup[0].appendChild(document.createElement("form")); // Cuz "<form>" didn't work.
@@ -211,28 +217,28 @@
                     verifyForm.onsubmit = function () {
                         const data = {};
                         data[factor.field] = answer.value;
-                        postJSON({url, data})
-                        .then(response => verifyPopup.html(response.factorResult))
-                        .fail(jqXHR => error.innerHTML = '<br>' + e(jqXHR.responseJSON.errorSummary));
+                        postJSON({ url, data })
+                            .then(response => verifyPopup.html(response.factorResult))
+                            .fail(jqXHR => error.innerHTML = '<br>' + e(jqXHR.responseJSON.errorSummary));
                         return false; // Cancel form.
                     };
                 }
                 return false; // Cancel form.
             };
         });
-        
-        createDiv("Administrator Roles", mainPopup, function () {
+
+        createDiv("Administrator Roles", menuPopup, function () {
             var allRoles = [
-                {type: "SUPER_ADMIN", label: "Super"},
-                {type: "ORG_ADMIN", label: "Organization"},
-                {type: "APP_ADMIN", label: "Application"},
-                {type: "USER_ADMIN", label: "Group"}, // not "User"
-                {type: "HELP_DESK_ADMIN", label: "Help Desk"},
-                {type: "GROUP_MEMBERSHIP_ADMIN", label: "Group Membership"},
-                {type: "READ_ONLY_ADMIN", label: "Read Only"},
-                {type: "MOBILE_ADMIN", label: "Mobile"},
-                {type: "API_ACCESS_MANAGEMENT_ADMIN", label: "API Access Management"},
-                {type: "REPORT_ADMIN", label: "Report"}
+                { type: "SUPER_ADMIN", label: "Super" },
+                { type: "ORG_ADMIN", label: "Organization" },
+                { type: "APP_ADMIN", label: "Application" },
+                { type: "USER_ADMIN", label: "Group" }, // not "User"
+                { type: "HELP_DESK_ADMIN", label: "Help Desk" },
+                { type: "GROUP_MEMBERSHIP_ADMIN", label: "Group Membership" },
+                { type: "READ_ONLY_ADMIN", label: "Read Only" },
+                { type: "MOBILE_ADMIN", label: "Mobile" },
+                { type: "API_ACCESS_MANAGEMENT_ADMIN", label: "API Access Management" },
+                { type: "REPORT_ADMIN", label: "Report" }
             ];
             var rolesPopup = createPopup("Administrator Roles");
             showRoles();
@@ -251,7 +257,7 @@
                                     url: `/api/v1/users/${userId}/roles`,
                                     data
                                 }).then(() => setTimeout(showRoles, 1000))
-                                .fail(jqXHR => rolesPopup.html(e(jqXHR.responseJSON.errorSummary) + "<br><br>"));
+                                    .fail(jqXHR => rolesPopup.html(e(jqXHR.responseJSON.errorSummary) + "<br><br>"));
                             });
                         });
                     } else {
@@ -262,8 +268,8 @@
                                 rolesPopup.html("Loading...");
                                 // https://developer.okta.com/docs/api/resources/roles#unassign-role-from-user
                                 deleteJSON(`/api/v1/users/${userId}/roles/${role.id}`)
-                                .then(() => setTimeout(showRoles, 1000))
-                                .fail(jqXHR => rolesPopup.html(e(jqXHR.responseJSON.errorSummary) + "<br><br>"));
+                                    .then(() => setTimeout(showRoles, 1000))
+                                    .fail(jqXHR => rolesPopup.html(e(jqXHR.responseJSON.errorSummary) + "<br><br>"));
                             });
                         });
                     }
@@ -271,32 +277,32 @@
             }
         });
 
-        createDiv("Set Password", mainPopup, function () {
+        createDiv("Set Password", menuPopup, function () {
             const passwordPopup = createPopup("Set Password");
             const passwordForm = passwordPopup[0].appendChild(document.createElement("form")); // Cuz "<form>" didn't work.
             passwordForm.innerHTML = "<input id=newPassword type=password><br><button class='link-button'>Set</button>";
             newPassword.focus(); // Cuz "autofocus" didn't work.
             passwordForm.onsubmit = function (event) {
                 const url = `/api/v1/users/${userId}`; // TODO: `/api/v1/users/${userId}/lifecycle/expire_password?tempPassword=false`
-                const data =  {
+                const data = {
                     credentials: {
                         password: {
                             value: newPassword.value
                         }
                     }
                 };
-                postJSON({url, data})
-                .then(() => passwordPopup.html("Password set."))
-                .fail(jqXHR => passwordPopup.html(e(jqXHR.responseJSON.errorCauses[0].errorSummary)));
+                postJSON({ url, data })
+                    .then(() => passwordPopup.html("Password set."))
+                    .fail(jqXHR => passwordPopup.html(e(jqXHR.responseJSON.errorCauses[0].errorSummary)));
                 event.preventDefault();
             };
         });
     }
 
-    function directoryGroups() {
-        createDiv("Search Groups", mainPopup, function () {
+    function enhanceDirectoryGroups() {
+        createMenuItem("Search Groups", rockstarMenu, () => {
             var popup = createPopup("Search Groups with Name Containing");
-            var form = $("<form>Name <input class=name style='width: 300px'> " + 
+            var form = $("<form>Name <input class=name style='width: 300px'> " +
                 "<input type=submit value=Search></form><br><div class=results></div>").appendTo(popup);
             form.submit(event => {
                 popup.find("div.results").html("Loading...");
@@ -315,10 +321,10 @@
             });
             form.find("input.name").focus();
         });
-        createDiv("Search Groups (experimental)", mainPopup, () => {
+        createMenuItem("Search Groups (experimental)", rockstarMenu, () => {
             const object = {
                 url: "/api/v1/groups?expand=stats",
-                data() {this.match = new RegExp(this.search, "i"); return {limit: this.limit};},
+                data() { this.match = new RegExp(this.search, "i"); return { limit: this.limit }; },
                 filter: group => group.profile.name.match(object.match),
                 limit: 10000,
                 comparer: (group1, group2) => group1.profile.name.localeCompare(group2.profile.name),
@@ -326,7 +332,7 @@
                     const logo = group._links.logo[0].href.split('/')[7].split('-')[0].replace(/odyssey/, 'okta');
                     return `<tr><td class=column-width><span class='icon icon-24 group-logos-24 logo-${logo}'></span>` +
                         `<td><a href="/admin/group/${group.id}">${e(group.profile.name)}</a>` +
-                        `<td>${e(group.profile.description || "No description")}` + 
+                        `<td>${e(group.profile.description || "No description")}` +
                         `<td>${group._embedded.stats.usersCount}` +
                         `<td>${group._embedded.stats.appsCount}` +
                         `<td>${group._embedded.stats.groupPushMappingsCount}`;
@@ -338,24 +344,24 @@
             searcher(object);
         });
     }
-    
+
     function securityAdministrators() {
-        createDiv("Export Administrators", mainPopup, function () { // TODO: consider merging into exportObjects(). Will the Link headers be a problem?
+        createDiv("Export Administrators", menuPopup, function () { // TODO: consider merging into exportObjects(). Will the Link headers be a problem?
             const adminsPopup = createPopup("Administrators");
             adminsPopup.html('This report has been deprecated. Please use the built-in report.');
         });
     }
     function systemLog() {
-        createDiv("Expand All", mainPopup, () => {
-            $(".row-expander").each(function () {this.click()});
-            $(".expand-all-details a").each(function () {this.click()});
+        createDiv("Expand All", menuPopup, () => {
+            $(".row-expander").each(function () { this.click() });
+            $(".expand-all-details a").each(function () { this.click() });
         });
-        createDiv("Expand Each Row", mainPopup, () => {
-            $(".row-expander").each(function () {this.click()});
+        createDiv("Expand Each Row", menuPopup, () => {
+            $(".row-expander").each(function () { this.click() });
         });
     }
     function activeDirectory() {
-        createDiv("Add OU Tooltips", mainPopup, () => {
+        createDiv("Add OU Tooltips", menuPopup, () => {
             addTooltips("user");
             addTooltips("group");
 
@@ -367,8 +373,8 @@
                     //el.previousSibling.click();
                 });
             }
-        });        
-        createDiv("Export OUs", mainPopup, () => {
+        });
+        createDiv("Export OUs", menuPopup, () => {
             var ouPopup = createPopup("OUs");
             var ous = [];
             exportOUs("user");
@@ -380,10 +386,10 @@
                 if (!els.length) els = document.querySelectorAll("#ad-import-ou-" + type + "-picker input:checked.ou-checkbox-tree-item");
                 els.forEach(el => ous.push(toCSV(el.value, type)));
             }
-        });           
+        });
     }
     function identityProviders() {
-        createDiv("SAML IdPs", mainPopup, () => {
+        createDiv("SAML IdPs", menuPopup, () => {
             getJSON(`/api/v1/idps?type=SAML2`).then(idps => {
                 getJSON('/api/v1/idps/credentials/keys').then(keys => {
                     var idpPopup = createPopup("SAML IdPs");
@@ -397,10 +403,10 @@
                     idpPopup.html(`<table class='data-list-table' style='border: 1px solid #ddd;'>${rows}</table>`);
                 });
             });
-        });      
+        });
     }
 
-    function exportObjects() {
+    function addExportObjects() {
         var exportPopup;
         var total;
         var totalBytes;
@@ -413,29 +419,30 @@
         var groupId;
         var cancel;
         var _expand;
+
         if (location.pathname == "/admin/users") {
             // see also Reports > Reports, Okta Password Health: https://ORG-admin.oktapreview.com/api/v1/users?format=csv
-            createDiv("Export Users", mainPopup, () => exportUsers("Users", "/api/v1/users", true));
+            createMenuItem("Export Users", rockstarMenu, () => exportUsers("Users", "/api/v1/users", true));
         } else if (location.pathname.match("/admin/groups")) {
-            createDiv("Export Groups", mainPopup, function () {
-                startExport("Groups", "/api/v1/groups", "id,name,description,type", 
+            createMenuItem("Export Groups", rockstarMenu, () => {
+                startExport("Groups", "/api/v1/groups", "id,name,description,type",
                     group => toCSV(group.id, group.profile.name, group.profile.description || "", group.type));
             });
-            createDiv("Export Groups with User and App Counts", mainPopup, function () {
-                startExport("Groups", "/api/v1/groups?expand=stats", "id,name,description,type,usersCount,appsCount", 
+            createMenuItem("Export Groups with User and App Counts", rockstarMenu, () => {
+                startExport("Groups", "/api/v1/groups?expand=stats", "id,name,description,type,usersCount,appsCount",
                     group => toCSV(group.id, group.profile.name, group.profile.description || "", group.type, group._embedded.stats.usersCount, group._embedded.stats.appsCount), 'stats');
             });
-            createDiv("Export Group Rules", mainPopup, function () {
-                startExport("Group Rules", "/api/v1/groups/rules", "id,name,status,if,assignToGroupIds,countOfExcludedUsers", 
+            createMenuItem("Export Group Rules", rockstarMenu, () => {
+                startExport("Group Rules", "/api/v1/groups/rules", "id,name,status,if,assignToGroupIds,countOfExcludedUsers",
                     rule => toCSV(rule.id, rule.name, rule.status, rule.conditions.expression.value, rule.actions.assignUserToGroups.groupIds.join(";"), rule.conditions.people ? rule.conditions.people.users.exclude.length : 0));
             });
         } else if (location.pathname == "/admin/apps/active") {
-            createDiv("Export Apps", mainPopup, function () {
-                startExport("Apps", "/api/v1/apps", "id,label,name,userNameTemplate,features,signOnMode,status,embedLinks", 
+            createDiv("Export Apps", menuPopup, function () {
+                startExport("Apps", "/api/v1/apps", "id,label,name,userNameTemplate,features,signOnMode,status,embedLinks",
                     app => toCSV(app.id, app.label, app.name, app.credentials.userNameTemplate.template, app.features.join(', '), app.signOnMode, app.status,
                         app._links.appLinks.map(a => a.href).join(', ')));
             });
-            createDiv("Export App Notes (experimental)", mainPopup, function () {
+            createDiv("Export App Notes (experimental)", menuPopup, function () {
                 startExport("App Notes", "/api/v1/apps?limit=2", "id,label,name,userNameTemplate,features,signOnMode,status,endUserAppNotes,adminAppNotes", async app => {
                     var response = await fetch(`/admin/app/${app.name}/instance/${app.id}/settings/general`);
                     var html = await response.text();
@@ -446,7 +453,7 @@
                     return toCSV(app.id, app.label, app.name, app.credentials.userNameTemplate.template, app.features.join(', '), app.signOnMode, app.status, enduserAppNotes, adminAppNotes);
                 });
             });
-            createDiv("Export App Sign On Policies (experimental)", mainPopup, function () {
+            createDiv("Export App Sign On Policies (experimental)", menuPopup, function () {
                 startExport("App Sign On Policies", "/api/v1/apps?limit=2", "id,label,name,userNameTemplate,features,signOnMode,status,policies", async app => {
                     var response = await fetch(`/admin/app/instance/${app.id}/app-sign-on-policy-list`);
                     var html = await response.text();
@@ -457,20 +464,20 @@
                     return toCSV(app.id, app.label, app.name, app.credentials.userNameTemplate.template, app.features.join(', '), app.signOnMode, app.status, policies);
                 });
             });
-            createDiv("Export Apps (custom)", mainPopup, function () {
+            createDiv("Export Apps (custom)", menuPopup, function () {
                 exportPopup = createPopup("Export Apps");
                 exportPopup.append("<br>Columns to export");
                 var checkboxDiv = $("<div style='overflow-y: scroll; height: 152px; width: 300px; border: 1px solid #ccc;'></div>").appendTo(exportPopup);
-                
+
                 function addCheckbox(value, text) {
                     const checked = exportColumns.includes(value) ? "checked" : "";
                     checkboxDiv.html(checkboxDiv.html() + `<label><input type=checkbox value='${e(value)}' ${checked}>${e(text)}</label><br>`);
                 }
                 const app = {
-                    id: "App Id", 
+                    id: "App Id",
                     name: "Name",
                     label: "Label",
-                    status: "Status", 
+                    status: "Status",
                     created: "Created Date",
                     lastUpdated: "Last Updated Date",
                     signOnMode: "Sign On Mode",
@@ -484,11 +491,11 @@
                 const defaultColumns = "id,label,name,credentials.userNameTemplate.template,features,signOnMode,status";
                 const exportColumns = (localStorage.rockstarExportAppColumns || defaultColumns).replace(/ /g, "").split(",");
                 for (const p in app) addCheckbox(p, app[p]);
-    
+
                 var exportArgs = localStorage.rockstarExportAppArgs || "";
                 exportPopup.append(`<br><br>Query or Filter&nbsp;&nbsp;` +
                     `<a href='https://developer.okta.com/docs/reference/api/apps/#list-applications' target='_blank' rel='noopener'>Help</a><br>` +
-                    `<input id=exportargs list=parlist value='${e(exportArgs)}' style='width: 300px'><br><br>` + 
+                    `<input id=exportargs list=parlist value='${e(exportArgs)}' style='width: 300px'><br><br>` +
                     `<div id=error>&nbsp;</div><br>` +
                     `<datalist id=parlist><option>q=amazon_aws<option>filter=status eq "ACTIVE"<option>filter=status eq "INACTIVE"</datalist>`);
                 createDivA("Export", exportPopup, function () {
@@ -514,70 +521,70 @@
                 });
             });
         } else if (location.pathname == "/admin/access/networks") {
-            createDiv("Export Networks", mainPopup, function () {
-                startExport("Zones", "/api/v1/zones", "id,name,gateways,gatewayType,zoneType", 
-                    zone => toCSV(zone.id, zone.name, zone.gateways && zone.gateways.map(gateway => gateway.value).join(', '), 
+            createDiv("Export Networks", menuPopup, function () {
+                startExport("Zones", "/api/v1/zones", "id,name,gateways,gatewayType,zoneType",
+                    zone => toCSV(zone.id, zone.name, zone.gateways && zone.gateways.map(gateway => gateway.value).join(', '),
                         zone.gateways && zone.gateways.map(gateway => gateway.type).join(', '), zone.type));
             });
         } else if (location.pathname.match("/admin/devices-inventory")) {
-            createDiv("Export Devices", mainPopup, function () {
-                startExport("Devices", "/api/v1/devices", "id,displayName,platform,manufacturer,model,osVersion,serialNumber,imei,meid,udid,sid", 
+            createDiv("Export Devices", menuPopup, function () {
+                startExport("Devices", "/api/v1/devices", "id,displayName,platform,manufacturer,model,osVersion,serialNumber,imei,meid,udid,sid",
                     device => toCSV(device.id, device.profile.displayName, device.profile.platform, device.profile.manufacturer, device.profile.model,
                         device.profile.osVersion, device.profile.serialNumber, device.profile.imei, device.profile.meid, device.profile.udid, device.profile.sid));
             });
         } else if (location.pathname == "/reports/user/yubikey") {
-            createDiv("Export YubiKeys", mainPopup, function () {
-                startExport("YubiKeys", "/api/v1/org/factors/yubikey_token/tokens?expand=user", "keyId,serial,status,userId,firstName,lastName,login,lastVerified", 
-                    token => toCSV(token.id, token.profile.serial, token.status, token._embedded?.user.id, token._embedded?.user.profile.firstName, 
+            createDiv("Export YubiKeys", menuPopup, function () {
+                startExport("YubiKeys", "/api/v1/org/factors/yubikey_token/tokens?expand=user", "keyId,serial,status,userId,firstName,lastName,login,lastVerified",
+                    token => toCSV(token.id, token.profile.serial, token.status, token._embedded?.user.id, token._embedded?.user.profile.firstName,
                         token._embedded?.user.profile.lastName, token._embedded?.user.profile.login, token.lastVerified), 'user');
             });
         } else if (location.pathname == "/admin/universaldirectory") {
-            createDiv("Export Mappings", mainPopup, function () {
-                startExport("Mappings", "/api/v1/mappings", "id,sourceId,sourceName,sourceType,targetId,targetName,targetType", 
-                    mapping => toCSV(mapping.id, mapping.source.id, mapping.source.name, mapping.source.type, 
+            createDiv("Export Mappings", menuPopup, function () {
+                startExport("Mappings", "/api/v1/mappings", "id,sourceId,sourceName,sourceType,targetId,targetName,targetType",
+                    mapping => toCSV(mapping.id, mapping.source.id, mapping.source.name, mapping.source.type,
                         mapping.target.id, mapping.target.name, mapping.target.type));
             });
         } else if (userId = getUserId()) {
-            createDiv("Export Group Memberships", mainPopup, function () {
-                startExport("Group Memberships", `/api/v1/users/${userId}/groups`, "id,name,description,type", 
+            createDiv("Export Group Memberships", menuPopup, function () {
+                startExport("Group Memberships", `/api/v1/users/${userId}/groups`, "id,name,description,type",
                     group => toCSV(group.id, group.profile.name, group.profile.description || "", group.type));
             });
         } else if (appId = getAppId()) {
             const atos = a => a ? a.join(";") : "";
-            createDiv("Export App Users", mainPopup, function () {
-                startExport("App Users", `/api/v1/apps/${appId}/users?limit=500`, "id,userName,scope,externalId,firstName,lastName,syncState,salesforceGroups,samlRoles,groupName", 
-                    appUser => toCSV(appUser.id, appUser.credentials ? appUser.credentials.userName : "", appUser.scope, appUser.externalId, 
+            createDiv("Export App Users", menuPopup, function () {
+                startExport("App Users", `/api/v1/apps/${appId}/users?limit=500`, "id,userName,scope,externalId,firstName,lastName,syncState,salesforceGroups,samlRoles,groupName",
+                    appUser => toCSV(appUser.id, appUser.credentials ? appUser.credentials.userName : "", appUser.scope, appUser.externalId,
                         appUser.profile.firstName, appUser.profile.lastName, appUser.syncState, atos(appUser.profile.salesforceGroups), atos(appUser.profile.samlRoles), appUser._links.group?.name));
             });
-            createDiv("Export App Groups", mainPopup, function () {
-                startExport("App Groups", `/api/v1/apps/${appId}/groups?expand=group`, 
-                    "id,name,licenses,roles,role,salesforceGroups,featureLicenses,publicGroups", 
-                    appGroup => toCSV(appGroup.id, appGroup._embedded.group.profile.name, atos(appGroup.profile.licenses), 
-                        atos(appGroup.profile.roles), appGroup.profile.role, atos(appGroup.profile.salesforceGroups), 
+            createDiv("Export App Groups", menuPopup, function () {
+                startExport("App Groups", `/api/v1/apps/${appId}/groups?expand=group`,
+                    "id,name,licenses,roles,role,salesforceGroups,featureLicenses,publicGroups",
+                    appGroup => toCSV(appGroup.id, appGroup._embedded.group.profile.name, atos(appGroup.profile.licenses),
+                        atos(appGroup.profile.roles), appGroup.profile.role, atos(appGroup.profile.salesforceGroups),
                         atos(appGroup.profile.featureLicenses), atos(appGroup.profile.publicGroups)), 'group');
             });
         } else if (groupId = getGroupId()) {
-            createDiv("Export Group Members", mainPopup, function () {
-                startExport("Group Members", `/api/v1/groups/${groupId}/users`, "id,login,firstName,lastName,status", 
+            createDiv("Export Group Members", menuPopup, function () {
+                startExport("Group Members", `/api/v1/groups/${groupId}/users`, "id,login,firstName,lastName,status",
                     user => toCSV(user.id, user.profile.login, user.profile.firstName, user.profile.lastName, user.status));
             });
-            createDiv("Export Group Members (custom)", mainPopup, () => exportUsers('Group Members', `/api/v1/groups/${groupId}/users`, false));
-        // TODO: what to do here?
-        // } else {
-        //     exportPopup = createPopup("Export");
-        //     exportPopup.html("Error. Go to one of these:<br><br>" +
-        //         "<a href='/admin/users'>Directory > People</a><br>" +
-        //         "<a href='/admin/groups'>Directory > Groups</a><br>" +
-        //         "<a href='/admin/people/directories'>Directory > Directory Integrations</a> and click on a Directory<br>" +
-        //         "<a href='/admin/apps/active'>Applications > Applications</a> and click on an App<br>" +
-        //         "<a href='/admin/apps/active'>Applications > Applications</a> to export Apps<br>" +
-        //         "<a href='/admin/access/networks'>Security > Networks</a><br>");
+            createDiv("Export Group Members (custom)", menuPopup, () => exportUsers('Group Members', `/api/v1/groups/${groupId}/users`, false));
+            // TODO: what to do here?
+            // } else {
+            //     exportPopup = createPopup("Export");
+            //     exportPopup.html("Error. Go to one of these:<br><br>" +
+            //         "<a href='/admin/users'>Directory > People</a><br>" +
+            //         "<a href='/admin/groups'>Directory > Groups</a><br>" +
+            //         "<a href='/admin/people/directories'>Directory > Directory Integrations</a> and click on a Directory<br>" +
+            //         "<a href='/admin/apps/active'>Applications > Applications</a> and click on an App<br>" +
+            //         "<a href='/admin/apps/active'>Applications > Applications</a> to export Apps<br>" +
+            //         "<a href='/admin/access/networks'>Security > Networks</a><br>");
         }
         function exportUsers(o, url, filter) {
             exportPopup = createPopup("Export " + o);
             exportPopup.append("<br>Columns to export");
             var checkboxDiv = $("<div style='overflow-y: scroll; height: 152px; width: 500px; border: 1px solid #ccc;'></div>").appendTo(exportPopup);
-            
+
             function addCheckbox(value, text) {
                 const checked = exportColumns.includes(value) ? "checked" : "";
                 checkboxDiv.html(checkboxDiv.html() + `<label><input type=checkbox value='${e(value)}' ${checked}>${e(text)}</label><br>`);
@@ -648,12 +655,12 @@
                 exportPopup.append(
                     `<form><br><br>Query, Filter, or Search&nbsp;&nbsp;` +
                     `<a href='https://developer.okta.com/docs/reference/api/users/#list-users' target='_blank' rel='noopener'>Help</a><br>` +
-                    `<input id=exportargs list=parlist value='${e(exportArgs)}' style='width: 500px'>` + 
+                    `<input id=exportargs list=parlist value='${e(exportArgs)}' style='width: 500px'>` +
                     `<datalist id=parlist><option>q=Smith<option>filter=status eq "DEPROVISIONED"<option>filter=profile.lastName eq "Smith"` +
                     `<option>search=status eq "DEPROVISIONED"<option>search=profile.lastName eq "Smith"</datalist>` +
                     `<br><br><a href='https://developer.okta.com/docs/reference/api/users/#list-users' target='_blank' rel='noopener'>Help</a>` +
                     `<br><br>By default, Okta lists all users who do not have a status of DEPROVISIONED.<br><br>` +
-                    `Query lists up 10 users; query by first name, last name or email.<br><br>` + 
+                    `Query lists up 10 users; query by first name, last name or email.<br><br>` +
                     `Filter lists all users; filter by status, last updated, id, login, email, first name or last name.<br><br>` +
                     `Search lists all users; search by any user profile property, including custom-defined<br>` +
                     `properties, and id, status, created, activated, status changed and last updated.</form>`);
@@ -782,7 +789,7 @@
 
     // User functions
     function userHome() {
-        createDiv("Show SSO", mainPopup, function () {
+        createDiv("Show SSO", menuPopup, function () {
             var ssoPopup;
             var label = "Show SSO";
             var labels = document.getElementsByClassName("app-button-name");
@@ -841,7 +848,7 @@
                         console.log(assertion);
                         assertion = assertion.replace(/\n/g, "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/&gt;&lt;/g, "&gt;\n&lt;")
                             .replace(/((SignatureValue|X509Certificate)&gt;.{80})(.*)&lt;/g, "$1<span title='$3' " + highlight + ">...</span>&lt;")
-                            .replace(/((Address|Issuer|NameID|NameIdentifier|Name|AttributeValue|Audience|Destination|Recipient)(.*&gt;|="|=&quot;))(.*?)(&lt;|"|&quot;)/g, 
+                            .replace(/((Address|Issuer|NameID|NameIdentifier|Name|AttributeValue|Audience|Destination|Recipient)(.*&gt;|="|=&quot;))(.*?)(&lt;|"|&quot;)/g,
                                 "$1<span " + highlight + ">$4</span>$5");
                         var postTo = unentity(response.match(/<form id="appForm" action="(.*?)"/)[1]);
                         ssoPopup.html("Post to: " + postTo + "<br><br><pre>" + indentXml(assertion, 4) + "</pre>");
@@ -885,11 +892,11 @@
 
         var tinyStyle;
         if (localStorage.rockstarTinyApps) tinyApps();
-        createDiv("Tiny Apps", mainPopup, function () {
+        createDiv("Tiny Apps", menuPopup, function () {
             localStorage.rockstarTinyApps = localStorage.rockstarTinyApps ? '' : 'true';
             tinyApps();
         });
-        function tinyApps () {
+        function tinyApps() {
             if (tinyStyle) {
                 document.head.removeChild(tinyStyle);
                 tinyStyle = null;
@@ -909,7 +916,7 @@
             }`;
         }
 
-        createDiv("All Tiny Apps", mainPopup, async function () {
+        createDiv("All Tiny Apps", menuPopup, async function () {
             const response = await fetch(`/api/v1/users/me/appLinks`);
             const links = (await response.json())
                 .sort((link1, link2) => link1.sortOrder < link2.sortOrder ? -1 : 1);
@@ -932,8 +939,8 @@
             new MutationObserver(function () {
                 this.disconnect();
                 quickAccess();
-            }).observe(qa, {attributes: true, attributeFilter: ['style']});
-            createDiv("Quick Access", mainPopup, function () {
+            }).observe(qa, { attributes: true, attributeFilter: ['style'] });
+            createDiv("Quick Access", menuPopup, function () {
                 localStorage.rockstarQuickAccess = localStorage.rockstarQuickAccess ? '' : 'true';
                 quickAccess();
             });
@@ -945,8 +952,8 @@
     }
 
     // API functions
-    function apiExplorer() {
-        createDiv("API Explorer", mainPopup, function () {
+    function addAPIExplorer() {
+        createMenuItem("API Explorer", rockstarMenu, () => {
             var apiPopup = createPopup("API Explorer");
             var form = apiPopup[0].appendChild(document.createElement("form"));
             form.innerHTML = "<select id=method><option>GET<option>POST<option>PUT<option>PATCH<option>DELETE</select> " +
@@ -956,9 +963,9 @@
             url.focus();
             var datalist = form.appendChild(document.createElement("datalist"));
             datalist.id = "urls";
-            const paths = 'apps,apps/${appId},apps/${appId}/groups,apps/${appId}/users,apps?filter=user.id eq "${userId}",authorizationServers,eventHooks,features,' + 
-                'groups,groups/${groupId},groups/${groupId}/roles,groups/${groupId}/users,groups/rules,idps,inlineHooks,logs,mappings,policies?type=${type},' + 
-                'meta/schemas/apps/${instanceId}/default,meta/schemas/user/default,meta/schemas/user/linkedObjects,meta/types/user,sessions/me,templates/sms,trustedOrigins,' + 
+            const paths = 'apps,apps/${appId},apps/${appId}/groups,apps/${appId}/users,apps?filter=user.id eq "${userId}",authorizationServers,eventHooks,features,' +
+                'groups,groups/${groupId},groups/${groupId}/roles,groups/${groupId}/users,groups/rules,idps,inlineHooks,logs,mappings,policies?type=${type},' +
+                'meta/schemas/apps/${instanceId}/default,meta/schemas/user/default,meta/schemas/user/linkedObjects,meta/types/user,sessions/me,templates/sms,trustedOrigins,' +
                 'users,users/me,users/${userId},users/${userId}/appLinks,users/${userId}/factors,users/${userId}/groups,users/${userId}/roles,zones';
             datalist.innerHTML = paths.split(',').map(path => `<option>/api/v1/${path}`).join("") + "<option>/oauth2/v1/clients";
             var send = form.appendChild(document.createElement("input"));
@@ -976,7 +983,7 @@
                     var id = location.pathname.match("/group/") ? parts[3] : parts[5];
                     url = url.replace(/\${.*}/, id);
                 }
-                requestJSON({url, method: method.value, data: data.value}).then((objects, status, jqXHR) => {
+                requestJSON({ url, method: method.value, data: data.value }).then((objects, status, jqXHR) => {
                     $(results).html("<br>");
                     var linkHeader = jqXHR.getResponseHeader("Link"); // TODO: maybe show X-Rate-Limit-* headers, too.
                     if (linkHeader) {
@@ -1058,12 +1065,14 @@
             rows.push("<tr>" + tds.join(""));
         });
         const len = "(length: " + objects.length + ")\n\n";
-        return {header: "<span id=table><b>Table</b> <a href=#json>JSON</a><br><br>" + len + "</span>",
+        return {
+            header: "<span id=table><b>Table</b> <a href=#json>JSON</a><br><br>" + len + "</span>",
             body: "<br><table class='data-list-table' style='border: 1px solid #ddd; white-space: nowrap;'><tr><th>" + ths.join("<th>") + linkify(rows.join("")) + "</table><br>" +
-                "<div id=json><a href=#table>Table</a> <b>JSON</b></div><br>" + len};
+                "<div id=json><a href=#table>Table</a> <b>JSON</b></div><br>" + len
+        };
     }
     function formatPre(s, url, addId) {
-        return "<pre>" + s.replace(/"id": "(.*)"/g, (match, id) => id.startsWith('<') ? match : `"id": "<a href="${url}${addId ? '/' + id: ''}">${id}</a>"`) + "</pre>";
+        return "<pre>" + s.replace(/"id": "(.*)"/g, (match, id) => id.startsWith('<') ? match : `"id": "<a href="${url}${addId ? '/' + id : ''}">${id}</a>"`) + "</pre>";
     }
     function linkify(s) {
         return s.replace(/"(https?.*)"/g, '"<a href="$1">$1</a>"');
@@ -1103,8 +1112,25 @@
     // Util functions
     if ($) {
         var xsrf = $("#_xsrfToken");
-        if (xsrf.length) $.ajaxSetup({headers: {"X-Okta-XsrfToken": xsrf.text()}});
+        if (xsrf.length) $.ajaxSetup({ headers: { "X-Okta-XsrfToken": xsrf.text() } });
     }
+
+    // Create the main rockstar menu button
+    function rockstarInit() {
+        const rockstarDropdown = $('<div class="rockstar-dropdown"></div>');
+        const rockstarBtn = $('<button type="button" class="rockstar-btn">rockstar</button>');
+        const rockstarMenu = $('<div class="rockstar-dropdown-content"></div>')
+
+        // Add the button and menu
+        rockstarDropdown.append(rockstarBtn);
+        rockstarDropdown.append(rockstarMenu);
+
+        rockstarDropdown.appendTo(document.body);
+
+        // Return the menu (where items need to be dynamically changed per page)
+        return rockstarMenu;
+    }
+
     function createPopup(title, main) {
         function toggleClosed() {
             popupBody.toggleClass('rs_closed');
@@ -1112,12 +1138,11 @@
         function toggleSide() {
             popup.toggleClass('rs_toggle');
         }
-        const popup = $(`<div style='position: absolute; z-index: 1000; top: 0px; max-height: calc(100% - 28px); max-width: calc(100% - 28px); padding: 8px; margin: 4px; overflow: auto; ` +
-                `background-color: white; border: 1px solid #ddd;'>` +
-                `${main ? "<span class=title><span style='font-size: 18px;'>≡</span> " : "<span style='font-weight: bold'>"}${title}</span>` +
-                `<div style='display: block; float: right;'>${main ? "<span class=toggleSide style='padding: 4px'> ⇄ </span><span class=minimize style='padding: 4px'> _ </span>" : ""} ` + 
-                `<a href='https://gabrielsroka.github.io/rockstar/' target='_blank' rel='noopener' style='font-size: 18px; padding: 4px'>?</a> ` + 
-                `<a onclick='document.body.removeChild(this.parentNode.parentNode)' style='font-size: 18px; cursor: pointer; padding: 4px'>X</a></div><br><br></div>`)
+        const popup = $(`<div class="rockstar-popup">` +
+            `${main ? "<span class=title><span style='font-size: 18px;'>≡</span> " : "<span style='font-weight: bold'>"}${title}</span>` +
+            `<div style='display: block; float: right;'>${main ? "<span class=toggleSide style='padding: 4px'> ⇄ </span><span class=minimize style='padding: 4px'> _ </span>" : ""} ` +
+            `<a href='https://gabrielsroka.github.io/rockstar/' target='_blank' rel='noopener' style='font-size: 18px; padding: 4px'>?</a> ` +
+            `<a onclick='document.body.removeChild(this.parentNode.parentNode)' style='font-size: 18px; cursor: pointer; padding: 4px'>X</a></div><br><br></div>`)
             .appendTo(document.body);
         const popupBody = $("<div></div>").appendTo(popup);
         if (main) {
@@ -1144,6 +1169,13 @@
     function createDivA(html, parent, clickHandler) {
         $(`<div><a style='cursor: pointer' class='link-button'>${html}</a></div>`).appendTo(parent).click(clickHandler);
     }
+
+    function createMenuItem(text, parentNode, clickHandler) {
+        $(`<a class="rockstar" href="#">${text}</a>`)
+            .appendTo(parentNode)
+            .click(clickHandler);
+    }
+
     function createDiv(html, parent, clickHandler) {
         $(`<div class=hoverDiv>${html}</div>`).appendTo(parent).click(clickHandler);
     }
@@ -1157,7 +1189,7 @@
         return links;
     }
     function getJSON(url) {
-        return $.get({url, headers});
+        return $.get({ url, headers });
     }
     function postJSON(settings) {
         settings.contentType = "application/json";
@@ -1171,7 +1203,7 @@
         return $.ajax(settings);
     }
     function deleteJSON(url) {
-        return $.ajax({url, headers, method: "DELETE"});
+        return $.ajax({ url, headers, method: "DELETE" });
     }
     function searcher(object) { // TODO: Save search string in location.hash # in URL. Reload from there.
         function searchObjects() {
@@ -1222,21 +1254,21 @@
 
         var timeoutID = 0;
         $(object.$search || ".data-list .data-list-toolbar")
-        .html(`<span class="search-box input-fix"><span class="icon-only icon-16 magnifying-glass-16"></span> ` +
-            `<input type='text' class='text-field-default' placeholder='${object.placeholder || "Search..."}' style='width: 250px'></span>`)
-        .find("input")
-        .keyup(function (event) {
-            const ESC = 27;
-            if (event.which == ESC) {
-                this.value = object.search = "";
-                showObjects([]);
-                return;
-            }
-            if (object.search == this.value || this.value.length < 2) return;
-            object.search = this.value;
-            clearTimeout(timeoutID);
-            timeoutID = setTimeout(searchObjects, 400);
-        });
+            .html(`<span class="search-box input-fix"><span class="icon-only icon-16 magnifying-glass-16"></span> ` +
+                `<input type='text' class='text-field-default' placeholder='${object.placeholder || "Search..."}' style='width: 250px'></span>`)
+            .find("input")
+            .keyup(function (event) {
+                const ESC = 27;
+                if (event.which == ESC) {
+                    this.value = object.search = "";
+                    showObjects([]);
+                    return;
+                }
+                if (object.search == this.value || this.value.length < 2) return;
+                object.search = this.value;
+                clearTimeout(timeoutID);
+                timeoutID = setTimeout(searchObjects, 400);
+            });
     }
     function toCSV(...fields) {
         return fields.map(field => `"${field == undefined ? "" : field.toString().replace(/"/g, '""')}"`).join(',');
@@ -1244,7 +1276,7 @@
     function downloadCSV(popup, html, header, lines, filename) {
         popup.html(html + "Done.");
         var a = $("<a>").appendTo(popup);
-        a.attr("href", URL.createObjectURL(new Blob([header + "\n" + lines.join("\n")], {type: 'text/csv'})));
+        a.attr("href", URL.createObjectURL(new Blob([header + "\n" + lines.join("\n")], { type: 'text/csv' })));
         var date = (new Date()).toISOString().replace(/T/, " ").replace(/:/g, "-").slice(0, 19);
         a.attr("download", `${filename} ${date}.csv`);
         a[0].click();
@@ -1267,10 +1299,10 @@
             groups = groups
                 .filter(group => group.profile.name.match(new RegExp(request.group, "i")))
                 .map(group => ({
-                    content: location.origin + "/admin/group/" + group.id, 
+                    content: location.origin + "/admin/group/" + group.id,
                     description: e(group.profile.name) + (group.profile.description ? ` <dim>(${group.profile.description})</dim>` : '')
                 }));
-            sendResponse({groups});
+            sendResponse({ groups });
         });
         return true; // Indicates that sendResponse will be called asynchronously.
     });
