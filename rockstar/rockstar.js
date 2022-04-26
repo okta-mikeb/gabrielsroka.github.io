@@ -64,7 +64,6 @@
 
     } else if (location.pathname.startsWith("/app/UserHome")) { // User home page (non-admin)
         rockstarMenu = rockstarInit();
-        console.log('Rockstar menu created');
         enhanceUserHome();
     }
     //} else if (location.host == "developer.okta.com" && location.pathname.startsWith("/docs/reference/api/")) {
@@ -798,7 +797,6 @@
 
     // User functions
     function enhanceUserHome() {
-        console.log('Enhancing user home');
         createMenuItem("Show SSO", rockstarMenu, () => {
             var ssoPopup;
             var label = "Show SSO";
