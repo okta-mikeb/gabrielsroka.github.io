@@ -835,6 +835,7 @@
                 url.placeholder = "URL";
                 url.focus();
                 var input = form.appendChild(document.createElement("input"));
+                input.classList.add("rockstar-btn");
                 input.type = "submit";
                 input.value = label;
                 form.onsubmit = function () {
@@ -977,6 +978,7 @@
                 'users,users/me,users/${userId},users/${userId}/appLinks,users/${userId}/factors,users/${userId}/groups,users/${userId}/roles,zones';
             datalist.innerHTML = paths.split(',').map(path => `<option>/api/v1/${path}`).join("") + "<option>/oauth2/v1/clients";
             var send = form.appendChild(document.createElement("input"));
+            send.classList.add("rockstar-btn");
             send.type = "submit";
             send.value = "Send";
             form.appendChild(document.createElement("div")).innerHTML = "<br>Body";
@@ -1126,7 +1128,10 @@
     // Create the main rockstar menu button
     function rockstarInit() {
         const rockstarDropdown = $('<div class="rockstar-dropdown"></div>');
-        const rockstarBtn = $('<button type="button" class="rockstar-btn">rockstar</button>');
+        if (location.pathname.startsWith('/app/UserHome')) {
+            rockstarDropdown.addClass('rockstar-dropdown-userhome');
+        }
+        const rockstarBtn = $('<button type="button" class="link-button rockstar-btn">rockstar-mod</button>');
         const rockstarMenu = $('<div class="rockstar-dropdown-content"></div>')
 
         // Add the button and menu
