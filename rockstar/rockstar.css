@@ -44,8 +44,18 @@
     margin: 0 auto;
 }
 
+.rockstar-dropdown-preview {
+    top: 42px;
+}
+
 .rockstar-dropdown-userhome {
-    top: 1px;
+    margin-top: 1px;
+    left: auto;
+    right: 316px;
+}
+
+.rockstar-dropdown-userhome-preview {
+    margin-top: 8px;
     left: auto;
     right: 316px;
 }

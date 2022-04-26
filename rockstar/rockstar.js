@@ -1127,9 +1127,18 @@
 
     // Create the main rockstar menu button
     function rockstarInit() {
+        const isPreview = location.hostname.indexOf('oktapreview.com') != -1;
+        const isUserHome = location.pathname.startsWith('/app/UserHome');
+
         const rockstarDropdown = $('<div class="rockstar-dropdown"></div>');
-        if (location.pathname.startsWith('/app/UserHome')) {
+        if (isPreview) {
+            rockstarDropdown.addClass('rockstar-dropdown-preview');
+        }
+        if (isUserHome && !isPreview) {
             rockstarDropdown.addClass('rockstar-dropdown-userhome');
+        }
+        if (isUserHome && isPreview) {
+            rockstarDropdown.addClass('rockstar-dropdown-userhome-preview');
         }
         const rockstarBtn = $('<button type="button" class="link-button rockstar-btn">rockstar-mod</button>');
         const rockstarMenu = $('<div class="rockstar-dropdown-content"></div>')
