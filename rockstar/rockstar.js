@@ -29,6 +29,8 @@
             enhanceDirectoryPeople();
         } else if (location.pathname.startsWith("/admin/user/")) {
             enhanceDirectoryPerson();
+        } else if (location.pathname.startsWith("/admin/app/")) {
+            enhanceApplication();
         } else if (location.pathname === "/admin/groups") {
             enhanceDirectoryGroups();
         } else if (location.pathname === "/admin/access/admins") {
@@ -71,6 +73,44 @@
     // }
 
     // Admin functions
+    function enhanceApplication() {
+        function getAppId() {
+            var path = location.pathname;
+            var pathparts = path.split('/');
+            if (path.match("admin/app") && (pathparts.length == 6 || pathparts.length == 7)) {
+                return pathparts[5];
+            }
+        }
+        let appId = getAppId();
+        let app;
+
+        // Retrieve the user record from the API
+        getJSON(`/api/v1/apps/${appId}`).then(apiApp => {
+            app = apiApp;
+        });
+
+        function showApp() {
+            function toString(o, i = '') {
+                const strings = [];
+                for (const p in o) {
+                    if (p == "_links") continue;
+                    var v = o[p];
+                    if (v === null) v = "null";
+                    else if (typeof v == "string") v = '"' + v.replace(/(["\\])/g, "\\$1") + '"'; // Escape " and \
+                    else if (Array.isArray(v)) v = v.length == 0 ? '[]' : "[\n" + toString(v, i + "    ") + i + "]";
+                    else if (typeof v == "object") v = $.isEmptyObject(v) ? '{}' : "{\n" + toString(v, i + "    ") + i + "}";
+                    if (!Array.isArray(o)) v = p + ": " + v;
+                    strings.push(i + v);
+                }
+                return strings.join("\n") + "\n";
+            }
+            const appPopup = createPopup("Application");
+            appPopup.html(`<pre>${e(toString(app))}</pre>`);
+        }
+
+        createMenuItem("Show App", rockstarMenu, showApp);
+    }
+
     function enhanceDirectoryPeople() {
         createMenuItem("Search Users (experimental)", rockstarMenu, () => {
             searcher({
