@@ -115,24 +115,26 @@
     }
 
     function enhanceDirectoryPeople() {
-        createMenuItem("Search Users (experimental)", rockstarMenu, () => {
-            searcher({
-                url: "/api/v1/users",
-                data() { return { q: this.search, limit: this.limit }; },
-                limit: 15, // 15 is the max limit when using q.
-                comparer: (user1, user2) => (user1.profile.firstName + user1.profile.lastName).localeCompare(user2.profile.firstName + user2.profile.lastName),
-                template(user) {
-                    var creds = user.credentials.provider;
-                    var logo = creds.type == "LDAP" ? "ldap_sun_one" : creds.type.toLowerCase();
-                    return `<tr><td><span class='icon icon-24 group-logos-24 logo-${logo}'></span> ${creds.name == "OKTA" ? "Okta" : creds.name}` +
-                        `<td><a href="/admin/user/profile/view/${e(user.id)}#tab-account">${e(user.profile.firstName)} ${e(user.profile.lastName)}</a>` +
-                        `<td>${e(user.profile.login)}<td>${e(user.profile.email)}`;
-                },
-                headers: "<tr><th>Source<th>Name<th>Username<th>Primary Email",
-                placeholder: "Search Active by First/Last/Email...",
-                empty: true
-            });
-        });
+        // Removing in lieu of new People page with new search functionality
+
+        // createMenuItem("Search Users (experimental)", rockstarMenu, () => {
+        //     searcher({
+        //         url: "/api/v1/users",
+        //         data() { return { q: this.search, limit: this.limit }; },
+        //         limit: 15, // 15 is the max limit when using q.
+        //         comparer: (user1, user2) => (user1.profile.firstName + user1.profile.lastName).localeCompare(user2.profile.firstName + user2.profile.lastName),
+        //         template(user) {
+        //             var creds = user.credentials.provider;
+        //             var logo = creds.type == "LDAP" ? "ldap_sun_one" : creds.type.toLowerCase();
+        //             return `<tr><td><span class='icon icon-24 group-logos-24 logo-${logo}'></span> ${creds.name == "OKTA" ? "Okta" : creds.name}` +
+        //                 `<td><a href="/admin/user/profile/view/${e(user.id)}#tab-account">${e(user.profile.firstName)} ${e(user.profile.lastName)}</a>` +
+        //                 `<td>${e(user.profile.login)}<td>${e(user.profile.email)}`;
+        //         },
+        //         headers: "<tr><th>Source<th>Name<th>Username<th>Primary Email",
+        //         placeholder: "Search Active by First/Last/Email...",
+        //         empty: true
+        //     });
+        // });
     }
 
     function enhanceDirectoryPerson() {
