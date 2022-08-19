@@ -49,9 +49,12 @@
         // Add the API explorer menu item
         addAPIExplorer();
 
+        // Add quick link to (possible Okta Preview environment under the same sub-domain)
+        addOktaTenantQuickLink();
+
         // Add additional menu helper navigation (old admin UI)
-        $("<li><a href='/admin/apps/add-app'>Integration Network</a>").appendTo("#nav-admin-apps-2");
-        $("<li><a href='/admin/access/api/tokens'>API Tokens</a>").appendTo("#nav-admin-access-2");
+        $("<li><a href='/admin/apps/add-app' class='rockstar-enhanced'>Integration Network</a>").appendTo("#nav-admin-apps-2");
+        $("<li><a href='/admin/access/api/tokens' class='rockstar-enhanced'>API Tokens</a>").appendTo("#nav-admin-access-2");
 
         // Add additional menu helper navigation (new admin UI)
         // TODO: Using mutation observers would probably be better
@@ -59,8 +62,8 @@
         const intervalID = setInterval(() => {
             if (count++ == 25) clearInterval(intervalID);
             if (!document.querySelector('[data-se=o-side-nav-item-APPLICATIONS] ul')) return;
-            $("<li><a class='nav-item--wrapper' href='/admin/apps/add-app'><p class='nav-item--label'>Integration Network</p></a>").appendTo('[data-se=o-side-nav-item-APPLICATIONS] ul');
-            $("<li><a class='nav-item--wrapper' href='/admin/access/api/tokens'><p class='nav-item--label'>API Tokens</p></a>").appendTo('[data-se=o-side-nav-item-SECURITY] ul');
+            $("<li><a class='nav-item--wrapper' href='/admin/apps/add-app'><p class='nav-item--label rockstar-enhanced'>Integration Network</p></a>").appendTo('[data-se=o-side-nav-item-APPLICATIONS] ul');
+            $("<li><a class='nav-item--wrapper' href='/admin/access/api/tokens'><p class='nav-item--label rockstar-enhanced'>API Tokens</p></a>").appendTo('[data-se=o-side-nav-item-SECURITY] ul');
             clearInterval(intervalID);
         }, 200);
 
@@ -331,7 +334,7 @@
             passwordForm.innerHTML = '<input id="newPassword" type="password"><br><button class="link-button" style="margin-top: 6px;">Set</button>';
             newPassword.focus(); // Cuz "autofocus" didn't work.
             passwordForm.onsubmit = function (event) {
-                const url = `/api/v1/users/${userId}`; // TODO: `/api/v1/users/${userId}/lifecycle/expire_password?tempPassword=false`
+                const url = `/api/v1/users/${userId}`;
                 const data = {
                     credentials: {
                         password: {
@@ -342,6 +345,41 @@
                 postJSON({ url, data })
                     .then(() => passwordPopup.html("Password set."))
                     .fail(jqXHR => passwordPopup.html(e(jqXHR.responseJSON.errorCauses[0].errorSummary)));
+                event.preventDefault();
+            };
+        });
+
+        createMenuItem("Expire Password", rockstarMenu, () => {
+            const expirePasswordPopup = createPopup("Expire Password");
+            const expirePasswordForm = expirePasswordPopup[0].appendChild(document.createElement("form"));
+            expirePasswordForm.innerHTML = "<div>New password will be required at next login</div><br><button class='link-button'>Expire Password</button>";
+            expirePasswordForm.onsubmit = function (event) {
+                const url = `/api/v1/users/${userId}/lifecycle/expire_password?tempPassword=false`;
+                postJSON({url})
+                    .then(() => expirePasswordPopup.html("Password expired."))
+                    .fail(jqXHR => expirePasswordPopup.html(e(jqXHR.responseJSON.errorCauses[0].errorSummary)));
+                event.preventDefault();
+            };
+        });
+
+        createMenuItem("Set Recovery Question", rockstarMenu, function () {
+            const recoveryQuestionPopup = createPopup("Set Recovery Question");
+            const recoveryQuestionForm = recoveryQuestionPopup[0].appendChild(document.createElement("form")); // Cuz "<form>" didn't work.
+            recoveryQuestionForm.innerHTML = "<input id=newRecoveryQuestion placeholder='New Question'><br><input id=newRecoveryAnswer placeholder='New Answer'><br><button class='link-button'>Set</button>";
+            $("#newRecoveryQuestion").focus(); // Cuz "autofocus" didn't work.
+            recoveryQuestionForm.onsubmit = function (event) {
+                const url = `/api/v1/users/${userId}`;
+                const data =  {
+                    credentials: {
+                        recovery_question: {
+                            question: newRecoveryQuestion.value,
+                            answer: newRecoveryAnswer.value
+                        }
+                    }
+                };
+                postJSON({url, data})
+                    .then(() => recoveryQuestionPopup.html("Recovery question set."))
+                    .fail(jqXHR => recoveryQuestionPopup.html(e(jqXHR.responseJSON.errorCauses[0].errorSummary)));
                 event.preventDefault();
             };
         });
@@ -600,9 +638,28 @@
         } else if (appId = getAppId()) {
             const atos = a => a ? a.join(";") : "";
             createMenuItem("Export App Users", rockstarMenu, () => {
-                startExport("App Users", `/api/v1/apps/${appId}/users?limit=500`, "id,userName,scope,externalId,firstName,lastName,syncState,salesforceGroups,samlRoles,groupName",
-                    appUser => toCSV(appUser.id, appUser.credentials ? appUser.credentials.userName : "", appUser.scope, appUser.externalId,
-                        appUser.profile.firstName, appUser.profile.lastName, appUser.syncState, atos(appUser.profile.salesforceGroups), atos(appUser.profile.samlRoles), appUser._links.group?.name));
+                startExport(
+                    "App Users",
+                    `/api/v1/apps/${appId}/users?limit=500&expand=skinny-user`,
+                    "id,userName,login,dn,scope,externalId,firstName,lastName,email,syncState,salesforceGroups,samlRoles,groupName,profileStatus",
+                    appUser => toCSV(
+                        appUser.id,
+                        appUser.credentials ? appUser.credentials.userName : "",
+                        appUser._embedded ? appUser._embedded.user ? appUser._embedded.user.profile.login : "" : "",
+                        appUser.profile.dn ? appUser.profile.dn : "",
+                        appUser.scope,
+                        appUser.externalId,
+                        appUser.profile.firstName,
+                        appUser.profile.lastName,
+                        appUser.profile.email,
+                        appUser.syncState,
+                        atos(appUser.profile.salesforceGroups),
+                        atos(appUser.profile.samlRoles),
+                        appUser._links.group?.name,
+                        appUser._embedded ? appUser._embedded.user ? appUser._embedded.user.status : "" : "",
+                    ),
+                    "skinny-user"
+                );
             });
             createMenuItem("Export App Groups", rockstarMenu, () => {
                 startExport("App Groups", `/api/v1/apps/${appId}/groups?expand=group`,
@@ -1000,6 +1057,34 @@
         }
     }
 
+    // Add the Okta Preview/Prod environment sub-domain quick link
+    function addOktaTenantQuickLink() {
+        const currentPath = location.pathname;
+        const isProdTenant = location.hostname.endsWith('.okta.com');
+        const oktaDomain = location.hostname.replace(
+            isProdTenant ? '.okta.com' : '.oktapreview.com', ''
+        );
+
+        // Block creating the link from sub pages (i.e., specific resources)
+        if (
+            currentPath.indexOf("user/profile/view") > 0 || currentPath.indexOf("admin/app/") > 0 ||
+            currentPath.indexOf("admin/group/") > 0
+        ) {
+            return;
+        }
+
+        // Create the external link to the other tenant
+        createExternalMenuItem(
+            isProdTenant ?
+                "Okta Preview Tenant" :
+                "Okta Prod Tenant",
+            rockstarMenu,
+            isProdTenant ?
+                `https://${oktaDomain}.oktapreview.com${currentPath}` :
+                `https://${oktaDomain}.okta.com${currentPath}`
+        );
+    }
+
     // API functions
     function addAPIExplorer() {
         createMenuItem("API Explorer", rockstarMenu, () => {
@@ -1230,6 +1315,14 @@
     }
     function createDivA(html, parent, clickHandler) {
         $(`<div><a style='cursor: pointer' class='link-button'>${html}</a></div>`).appendTo(parent).click(clickHandler);
+    }
+
+    function createExternalMenuItem(text, parentNode, externalUrl) {
+        const iconItem = '<span data-se="icon" class="o-icon o-icon-external-link o-icon-size-small"></span>';
+        const iconContainer = `<o-icon role="presentation" class="hydrated">${iconItem}</o-icon>`;
+
+        $(`<span class="rockstar"><a href="${externalUrl}" target="_blank" rel="noopener">${text}${iconItem}</a></span>`)
+            .appendTo(parentNode);
     }
 
     function createMenuItem(text, parentNode, clickHandler) {

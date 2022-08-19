@@ -113,6 +113,11 @@
     color: #ffffff;
 }
 
+.rockstar-enhanced {
+    color: blue !important;
+    font-weight: bold !important;
+}
+
 .rockstar-popup {
     position: absolute;
     z-index: 1000;
