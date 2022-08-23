@@ -12,6 +12,7 @@
 
     let mainPopup;
     let rockstarMenu;
+    let rockstarDropdown;
     $ = window.$ || window.jQueryCourage;
     const headers = { 'X-Okta-User-Agent-Extended': 'rockstar' };
 
@@ -48,6 +49,51 @@
 
         // Add the API explorer menu item
         addAPIExplorer();
+
+        function addLogoLabel(logoUrl, isPreview) {
+            const envType = isPreview ? "preview" : "prod";
+            let label = $(`<span class="rockstar-logo-label rockstar-${envType}-label">${envType}</span>`);
+
+            let newLogo = $(`<img src="${logoUrl}" class="rockstar-logo">`);
+
+            const oktaIcon = $(".okta-icon");
+            if (oktaIcon.length === 1) {
+                oktaIcon.replaceWith(newLogo);
+                if (isPreview) {
+                    newLogo.addClass("rockstar-desaturate");
+                }
+
+                // Insert rockstar menu after the "a" logo URL
+                $(".admin-header--logo-url").after(rockstarDropdown);
+                newLogo.after(label);
+
+                // Apply rockstar overrides to GRID
+                $(".o-header").addClass("rockstar-override");
+                return;
+            }
+
+            // Retry in 1 second
+            setTimeout(addLogoLabel, 1000, logoUrl, isPreview);
+        }
+
+        // Retrieve the brand Id and themes (for the Logo URL)
+        getJSON(`/api/v1/brands`).then(brands => {
+
+            if (brands.length > 0 && brands[0].id) {
+                const brandId = brands[0].id;
+
+                // Retrieve the first theme logo
+                getJSON(`/api/v1/brands/${brandId}/themes`).then(themes => {
+
+                    if (themes.length > 0 && themes[0].logo) {
+                        const logoUrl = themes[0].logo;
+                        const isPreview = location.hostname.indexOf("oktapreview.com") > -1;
+
+                        addLogoLabel(logoUrl, isPreview);
+                    }
+                })
+            }
+        });
 
         // Add quick link to (possible Okta Preview environment under the same sub-domain)
         addOktaTenantQuickLink();
@@ -90,6 +136,22 @@
         // Retrieve the user record from the API
         getJSON(`/api/v1/apps/${appId}`).then(apiApp => {
             app = apiApp;
+
+            // These functions need to live here as they depend on the APP JSON
+
+            // Add the SSO metadata link (and copy link)
+            const metadataUrl = app._links?.metadata?.href;
+            if (metadataUrl) {
+                // TODO: Add application name to filename
+                createExternalMenuItem("Download SAML Metadata", rockstarMenu, metadataUrl);
+
+                // Copy to clipboard
+                createMenuItem("Copy SAML Metadata URL", rockstarMenu, () => {
+                    navigator.clipboard.writeText(metadataUrl).then(() => {
+                        alert("Metadata URL copied to clipboard");
+                    });
+                });
+            }
         });
 
         function showApp() {
@@ -112,6 +174,7 @@
         }
 
         createMenuItem("Show App", rockstarMenu, showApp);
+
     }
 
     function enhanceDirectoryPeople() {
@@ -1257,10 +1320,10 @@
         const isPreview = location.hostname.indexOf('oktapreview.com') != -1;
         const isUserHome = location.pathname.startsWith('/app/UserHome');
 
-        const rockstarDropdown = $('<div class="rockstar-dropdown"></div>');
-        if (isPreview) {
-            rockstarDropdown.addClass('rockstar-dropdown-preview');
-        }
+        rockstarDropdown = $('<div class="rockstar-dropdown"></div>');
+        // if (isPreview) {
+        //     rockstarDropdown.addClass('rockstar-dropdown-preview');
+        // }
         if (isUserHome && !isPreview) {
             rockstarDropdown.addClass('rockstar-dropdown-userhome');
         }
@@ -1274,7 +1337,8 @@
         rockstarDropdown.append(rockstarBtn);
         rockstarDropdown.append(rockstarMenu);
 
-        rockstarDropdown.appendTo(document.body);
+        // rockstarDropdown.appendTo(document.body);
+        // rockstarDropdown.after($(".okta-icon"));
 
         // Return the menu (where items need to be dynamically changed per page)
         return rockstarMenu;
@@ -1320,10 +1384,10 @@
     }
 
     function createExternalMenuItem(text, parentNode, externalUrl) {
-        const iconItem = '<span data-se="icon" class="o-icon o-icon-external-link o-icon-size-small"></span>';
-        const iconContainer = `<o-icon role="presentation" class="hydrated">${iconItem}</o-icon>`;
+        // const iconItem = '<span data-se="icon" class="o-icon o-icon-external-link o-icon-size-small"></span>';
+        // const iconContainer = `<o-icon role="presentation" class="hydrated">${iconItem}</o-icon>`;
 
-        $(`<span class="rockstar"><a href="${externalUrl}" target="_blank" rel="noopener">${text}${iconItem}</a></span>`)
+        $(`<span class="rockstar"><a href="${externalUrl}" target="_blank" rel="noopener">${text}</a></span>`)
             .appendTo(parentNode);
     }
 

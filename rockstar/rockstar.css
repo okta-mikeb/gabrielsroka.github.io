@@ -11,7 +11,6 @@
 */
 
 .rockstar-btn {
-    margin-top: 12px !important;
     display: inline-block;
     position: relative;
     margin: 0;
@@ -36,17 +35,20 @@
 }
 
 .rockstar-dropdown {
-    position: fixed;
-    display: inline-block;
-    top: 0;
-    left: 132px;
-    width: 120px;
-    margin: 0 auto;
+    /* position: inherit;
+    display: inline-block; */
+    /* top: 0;
+    left: 132px; */
+    /* width: auto; */
+    display: flex;
+    margin: auto;
+    white-space: nowrap;
+    z-index: 1000;
 }
 
-.rockstar-dropdown-preview {
+/* .rockstar-dropdown-preview {
     top: 42px;
-}
+} */
 
 .rockstar-dropdown-userhome {
     margin-top: 1px;
@@ -61,9 +63,9 @@
 }
 
 @media only screen and (max-width: 1303px) {
-    .rockstar-dropdown {
+    /* .rockstar-dropdown {
         left: 176px;
-    }
+    } */
 
     .rockstar-dropdown-userhome {
         left: auto;
@@ -76,6 +78,7 @@
     position: absolute;
     background-color: #ffffff;
     border: 1px solid #c1c1c8;
+    top: 48px;
     min-width: 160px;
     box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
     z-index: 1;
@@ -118,6 +121,38 @@
     font-weight: bold !important;
 }
 
+.rockstar-desaturate {
+    filter: gray; /* IE */
+    -webkit-filter: grayscale(1); /* Old WebKit */
+    -webkit-filter: grayscale(100%); /* New WebKit */
+    filter: grayscale(100%); /* Current draft standard */
+}
+
+.rockstar-logo-label {
+    position: relative;
+    font-weight: bold;
+    z-index: 1000;
+    transform: rotate(26deg);
+    font-size: 8pt;
+}
+
+.rockstar-preview-label {
+    color: #1662dd;
+    left: -20px;
+    top: -12px;
+}
+
+.rockstar-prod-label {
+    color: #ac0101;
+    left: -14px;
+    top: -12px;
+}
+
+.rockstar-logo {
+    /** Max height on end-user dashboard is 40px **/
+    max-height: 32px;
+}
+
 .rockstar-popup {
     position: absolute;
     z-index: 1000;
@@ -155,4 +190,28 @@
 
 .hoverDiv:hover {
     background-color: #f0f0f0;
+}
+
+/** Additional styles for Okta grid (may change if UI changes) **/
+@media only screen and (min-width: 1304px)
+{
+    .o-header.rockstar-override {
+        grid-template-columns: minmax(304px, 352px) minmax(0, 1fr);
+    }
+}
+
+
+@media only screen and (max-width: 1303px) and (min-width: 752px)
+{
+    .o-header.rockstar-override {
+        grid-template-columns: minmax(304px, 352px) minmax(0, 1fr);
+    }
+}
+
+
+@media only screen and (max-width: 751px)
+{
+    .o-header.rockstar-override {
+        grid-template-columns: 1fr 0.5fr;
+    }
 }
