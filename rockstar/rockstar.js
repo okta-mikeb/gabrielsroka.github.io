@@ -51,7 +51,8 @@
         addAPIExplorer();
 
         function addLogoLabel(logoUrl, isPreview) {
-            const envType = isPreview ? "preview" : "prod";
+            const isDev = location.hostname.startsWith("dev-");
+            const envType = isPreview ? "preview" : isDev ? "dev" : "prod";
             let label = $(`<span class="rockstar-logo-label rockstar-${envType}-label">${envType}</span>`);
 
             let newLogo = $(`<img src="${logoUrl}" class="rockstar-logo">`);
@@ -76,24 +77,34 @@
             setTimeout(addLogoLabel, 1000, logoUrl, isPreview);
         }
 
-        // Retrieve the brand Id and themes (for the Logo URL)
-        getJSON(`/api/v1/brands`).then(brands => {
+        // Determine preview tenant
+        const isPreview = location.hostname.indexOf("oktapreview.com") > -1;
 
-            if (brands.length > 0 && brands[0].id) {
-                const brandId = brands[0].id;
+        // Check for cached (localStorage) logo URL
+        if (localStorage.getItem("oktaLogoUrl") !== null) {
+            const logoUrl = localStorage.getItem("oktaLogoUrl");
+            addLogoLabel(logoUrl, isPreview);
+        } else {
+            // Retrieve the brand Id and themes (for the Logo URL)
+            getJSON(`/api/v1/brands`).then(brands => {
 
-                // Retrieve the first theme logo
-                getJSON(`/api/v1/brands/${brandId}/themes`).then(themes => {
+                if (brands.length > 0 && brands[0].id) {
+                    const brandId = brands[0].id;
 
-                    if (themes.length > 0 && themes[0].logo) {
-                        const logoUrl = themes[0].logo;
-                        const isPreview = location.hostname.indexOf("oktapreview.com") > -1;
+                    // Retrieve the first theme logo
+                    getJSON(`/api/v1/brands/${brandId}/themes`).then(themes => {
 
-                        addLogoLabel(logoUrl, isPreview);
-                    }
-                })
-            }
-        });
+                        if (themes.length > 0 && themes[0].logo) {
+                            const logoUrl = themes[0].logo;
+
+                            // Store/cache the logo URL
+                            localStorage.setItem("oktaLogoUrl", logoUrl);
+                            addLogoLabel(logoUrl, isPreview);
+                        }
+                    })
+                }
+            });
+        }
 
         // Add quick link to (possible Okta Preview environment under the same sub-domain)
         addOktaTenantQuickLink();
@@ -140,9 +151,9 @@
             // These functions need to live here as they depend on the APP JSON
 
             // Add the SSO metadata link (and copy link)
+            const signOnMode = app.signOnMode;
             const metadataUrl = app._links?.metadata?.href;
-            if (metadataUrl) {
-                // TODO: Add application name to filename
+            if (signOnMode === "SAML_2_0" && metadataUrl) {
                 createExternalMenuItem("Download SAML Metadata", rockstarMenu, metadataUrl);
 
                 // Copy to clipboard

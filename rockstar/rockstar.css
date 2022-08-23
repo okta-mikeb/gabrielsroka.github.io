@@ -138,13 +138,19 @@
 
 .rockstar-preview-label {
     color: #1662dd;
-    left: -20px;
+    left: -18px;
     top: -12px;
 }
 
 .rockstar-prod-label {
     color: #ac0101;
     left: -14px;
+    top: -12px;
+}
+
+.rockstar-dev-label {
+    color: #00b315;
+    left: -12px;
     top: -12px;
 }
 
