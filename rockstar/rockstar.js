@@ -10,6 +10,15 @@
     //   Many: enhanced menus
     // and more to come...
 
+    // TODO: Add the following functionality:
+    //
+    // 1 - Update Preview/Prod quick link for specific resources to navigate
+    //     up to the main resources page (i.e., /groups/xlj980983j2 -> /groups)
+    // 2 - System Logs -> Read SAML Request and URL decode -> SAML decode
+    // 3 - Toggle side-bar on sign-in code editor page
+    // 4 - Select-all copy, Select-all paste (replace current contents), talk
+    //     to Joseph about this one
+
     let mainPopup;
     let rockstarMenu;
     let rockstarDropdown;
@@ -79,12 +88,17 @@
 
         // Determine preview tenant
         const isPreview = location.hostname.indexOf("oktapreview.com") > -1;
+        let oktaLogoUrls = JSON.parse(localStorage.getItem("oktaLogoUrls"));
 
         // Check for cached (localStorage) logo URL
-        if (localStorage.getItem("oktaLogoUrl") !== null) {
-            const logoUrl = localStorage.getItem("oktaLogoUrl");
-            addLogoLabel(logoUrl, isPreview);
+        if (oktaLogoUrls !== null && oktaLogoUrls[location.hostname] !== undefined) {
+            addLogoLabel(oktaLogoUrls[location.hostname], isPreview);
         } else {
+            // Configure the Okta logo URLs object
+            if (oktaLogoUrls === null) {
+                oktaLogoUrls = {};
+            }
+
             // Retrieve the brand Id and themes (for the Logo URL)
             getJSON(`/api/v1/brands`).then(brands => {
 
@@ -96,9 +110,10 @@
 
                         if (themes.length > 0 && themes[0].logo) {
                             const logoUrl = themes[0].logo;
+                            oktaLogoUrls[location.hostname] = logoUrl;
 
                             // Store/cache the logo URL
-                            localStorage.setItem("oktaLogoUrl", logoUrl);
+                            localStorage.setItem("oktaLogoUrls", JSON.stringify(oktaLogoUrls));
                             addLogoLabel(logoUrl, isPreview);
                         }
                     })
@@ -144,7 +159,7 @@
         let appId = getAppId();
         let app;
 
-        // Retrieve the user record from the API
+        // Retrieve the application record from the API
         getJSON(`/api/v1/apps/${appId}`).then(apiApp => {
             app = apiApp;
 
@@ -153,15 +168,44 @@
             // Add the SSO metadata link (and copy link)
             const signOnMode = app.signOnMode;
             const metadataUrl = app._links?.metadata?.href;
-            if (signOnMode === "SAML_2_0" && metadataUrl) {
-                createExternalMenuItem("Download SAML Metadata", rockstarMenu, metadataUrl);
 
-                // Copy to clipboard
-                createMenuItem("Copy SAML Metadata URL", rockstarMenu, () => {
-                    navigator.clipboard.writeText(metadataUrl).then(() => {
-                        alert("Metadata URL copied to clipboard");
+            if (signOnMode === "SAML_2_0" && metadataUrl) {
+                // Update the hostname to include the "-admin" value
+                // to prevent CORS restrictions
+                let urlObject = new URL(metadataUrl);
+                urlObject.hostname = location.hostname;
+
+                // Attempt to download the XML metadata
+                getXML(urlObject.toString()).then((xmlContent) => {
+                    const idRegEx = /.*\/(.+?)\/sso\/./;
+                    const ssoURLs = xmlContent.getElementsByTagName("md:SingleSignOnService");
+                    const ssoLocation = ssoURLs.length !== 0 ?
+                        ssoURLs[0].getAttribute("Location"): null;
+
+                    const idRegExTest = idRegEx.exec(ssoLocation);
+                    if (idRegExTest && idRegExTest.length > 1) {
+                        const metadataId = idRegExTest[1];
+                        const publicUrl = location.hostname.replace('-admin', '');
+                        const publicMetadataUrl = `https://${publicUrl}/app/${metadataId}/sso/saml/metadata`;
+
+                        // Copy public metadata URL to clipboard
+                        createMenuItem("Copy Public SAML Metadata URL", rockstarMenu, () => {
+                            navigator.clipboard.writeText(publicMetadataUrl).then(() => {
+                                alert("Metadata URL copied to clipboard");
+                            });
+                        });
+                    }
+
+                    const xmlString = typeof XMLSerializer !== "undefined" ?
+                        (new window.XMLSerializer()).serializeToString(xmlContent) :
+                        xmlContent.xml;
+
+                    createMenuItem("Download SAML Metadata", rockstarMenu, () => {
+                        downloadXML(appId, xmlString, `${appId}_metadata.xml`);
                     });
+
                 });
+
             }
         });
 
@@ -600,9 +644,23 @@
             });
         } else if (location.pathname == "/admin/apps/active") {
             createMenuItem("Export Apps", rockstarMenu, () => {
-                startExport("Apps", "/api/v1/apps", "id,label,name,userNameTemplate,features,signOnMode,status,embedLinks",
-                    app => toCSV(app.id, app.label, app.name, app.credentials.userNameTemplate.template, app.features.join(', '), app.signOnMode, app.status,
-                        app._links.appLinks.map(a => a.href).join(', ')));
+                startExport(
+                    "Apps",
+                    "/api/v1/apps",
+                    "id,label,name,userNameTemplate,features,hideiOS,hideWeb,signOnMode,status,embedLinks",
+                    app => toCSV(
+                        app.id,
+                        app.label,
+                        app.name,
+                        app.credentials.userNameTemplate.template,
+                        app.features.join(', '),
+                        app.visibility.hide.iOS,
+                        app.visibility.hide.web,
+                        app.signOnMode,
+                        app.status,
+                        app._links.appLinks.map(a => a.href).join(', ')
+                    )
+                );
             });
             createMenuItem("Export App Notes (experimental)", rockstarMenu, () => {
                 startExport("App Notes", "/api/v1/apps?limit=2", "id,label,name,userNameTemplate,features,signOnMode,status,endUserAppNotes,adminAppNotes", async app => {
@@ -1420,6 +1478,13 @@
         }
         return links;
     }
+    function getXML(url) {
+        let settings = {
+            url: url,
+            dataType: "xml"
+        };
+        return $.get(settings);
+    }
     function getJSON(url) {
         return $.get({ url, headers });
     }
@@ -1504,6 +1569,23 @@
     }
     function toCSV(...fields) {
         return fields.map(field => `"${field == undefined ? "" : field.toString().replace(/"/g, '""')}"`).join(',');
+    }
+    function downloadXML(appId, xmlContent, filename) {
+        const xmlBlob = new Blob([xmlContent], {type: "text/xml"});
+        const xmlObj = URL.createObjectURL(xmlBlob);
+
+        // Check for an existing link to download
+        if ($(`#metadataDownload_${appId}`).length !== 0) {
+            $(`#metadataDownload_${appId}`).click();
+            return;
+        }
+
+        let a = $("<a>");
+        a.attr("id", `metadataDownload_${appId}`);
+        a.attr("href", xmlObj);
+        a.attr("download", filename);
+        a.appendTo(document.body);
+        a[0].click();
     }
     function downloadCSV(popup, html, header, lines, filename) {
         popup.html(html + "Done.");
