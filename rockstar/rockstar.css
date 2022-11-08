@@ -34,6 +34,23 @@
     text-align: center;
 }
 
+.rockstar-hidden {
+    display: none;
+}
+
+.rockstar-container {
+    margin: 10px 0;
+    display: flex;
+    gap: 6px;
+}
+
+.rockstar-container-end {
+    margin: 10px 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
 .rockstar-dropdown {
     /* position: inherit;
     display: inline-block; */
@@ -159,6 +176,11 @@
     max-height: 32px;
 }
 
+.rockstar-input {
+    width: 100%;
+    margin: 2px;
+}
+
 .rockstar-popup {
     position: absolute;
     z-index: 1000;
@@ -171,6 +193,22 @@
     background-color: white;
     border: 1px solid #ddd;
     box-shadow: 0 0 20px 6px rgba(0, 0, 0, 35%);
+}
+
+.rockstar-userlist-table {
+    border-collapse: collapse;
+}
+
+.rockstar-userlist-table thead th {
+    font-weight: bold;
+    background-color: #c1c1c8;
+    border: 1px solid black;
+    padding: 2px;
+}
+
+.rockstar-userlist-table tbody td {
+    border: 1px solid black;
+    padding: 2px;
 }
 
 .title {

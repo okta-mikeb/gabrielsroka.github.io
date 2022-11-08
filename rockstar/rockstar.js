@@ -18,6 +18,8 @@
     // 3 - Toggle side-bar on sign-in code editor page
     // 4 - Select-all copy, Select-all paste (replace current contents), talk
     //     to Joseph about this one
+    // 5 - Duplicate "Save" button on profile (and potentially other) screen
+    //     at the top with the "Cancel" button
 
     let mainPopup;
     let rockstarMenu;
@@ -505,7 +507,496 @@
         });
     }
 
+    function waitForElement(selector, callback, maxTimes = false) {
+        // Attempt to retrieve the element(s) by provided selector
+        const result = $(selector);
+
+        if (result.length) {
+            // Process callback with result
+            // (save from having to query elements again in the callback)
+            callback(result);
+        } else {
+            if (maxTimes === false || maxTimes > 0) {
+                (maxTimes !== false) && maxTimes--;
+
+                // Element not found, wait 500ms to check again
+                setTimeout(() => {
+                    waitForElement(selector, callback);
+                }, 500);
+            }
+        }
+    }
+
+    function startGroupUserExport(groupId, callback) {
+        let users = [];
+
+        // Display export status
+        $('#compareStatus').text(`Exporting group: ${groupId}...`);
+
+        // Sub-function for parsing users in a group
+        function parseGroupUsers(response, status, jqXHR) {
+            // Update the results
+            if (response && response.length) {
+                users = users.concat(response);
+            }
+            $('#compareResults').text(`${users.length} users exported`);
+
+            // Check for pagination and rate limits
+            const linkHeaders = jqXHR.getResponseHeader('link');
+            const links = linkHeaders ? getLinks(linkHeaders) : null;
+            const paginate = links && links.next;
+            if (paginate) {
+                const nextUrl = new URL(links.next);
+                const url = nextUrl.pathname + nextUrl.search;
+
+                // Retrieving rate limit header
+                var limitRemaining = jqXHR.getResponseHeader('X-Rate-Limit-Remaining');
+                if (limitRemaining && limitRemaining < 10) {
+                    // Wait before sending next API call
+                    $('#compareStatus').text(`Exporting group: ${groupId} (paused - rate limit)`);
+
+                    // Calculate next API call timeout (with 2s buffer)
+                    const limitReset = jqXHR.getResponseHeader('X-Rate-Limit-Reset');
+                    const now = new Date().getTime() / 1000;
+                    const rateTimeout = (limitReset - now) * 1000 + 2000;
+                    setTimeout(function() {
+                        // Update export status
+                        $('#compareStatus').text(`Exporting group: ${groupId}... (resumed)`);
+
+                        // Retrieve next page of users
+                        getJSON(url).then(parseGroupUsers).fail((request) => {
+                            // TODO: Handle request failure
+                            console.log(request);
+
+                            // Execute the callback without any users
+                            callback([]);
+                        });
+                    }, rateTimeout);
+                } else {
+                    // Retrieve next page of users
+                    getJSON(url).then(parseGroupUsers).fail((request) => {
+                        // TODO: Handle request failure
+                        console.log(request);
+
+                        // Execute the callback without any users
+                        callback([]);
+                    });
+                }
+
+            } else if (callback !== undefined) {
+                // Update export status
+                $('#compareStatus').text(`Exporting group: ${groupId} - complete`);
+
+                // No more users, execute callback with user list
+                callback(users);
+            }
+        }
+
+        // Retrieve the specified group
+        getJSON(`/api/v1/groups/${groupId}/users?limit=200`)
+            .then(parseGroupUsers)
+            .fail((request) => {
+                // TODO: Handle request failure
+                console.log(request);
+
+                // Execute the callback without any users
+                callback([]);
+            }
+        );
+    }
+
+    function displayGroupMembershipDiff(firstGroupUsers, secondGroupUsers) {
+        $('#compareResults').text('Comparing group memberships...');
+
+        const firstGroupId = localStorage.getItem('firstGroupId');
+        const firstGroupTitle = localStorage.getItem('firstGroupTitle');
+        const secondGroupId = localStorage.getItem('secondGroupId');
+        const secondGroupTitle = localStorage.getItem('secondGroupTitle');
+
+        const firstGroupIds = firstGroupUsers.map(user => user.id);
+        const secondGroupIds = secondGroupUsers.map(user => user.id);
+
+        // Retrieve users in the second group, not in the first
+        const notInFirstGroup = secondGroupUsers.filter(x => !firstGroupIds.includes(x.id));
+
+        // Retrieve users in the first group, not in the second
+        const notInSecondGroup = firstGroupUsers.filter(x => !secondGroupIds.includes(x.id));
+
+        if (notInFirstGroup.length === 0 && notInSecondGroup.length === 0) {
+            const resultMsg = [
+                'Group comparison complete.',
+                'User group memberships are identical.'
+            ];
+            $('#compareResults').html(resultMsg.join('<br/>'));
+            return;
+        }
+
+        const resultMsg = [
+            'Group comparison complete.',
+            `First group: ${firstGroupTitle} (${firstGroupId})`,
+            `&nbsp;&nbsp; Total users: <strong>${firstGroupIds.length}</strong>`,
+            `&nbsp;&nbsp; Missing users: <strong>${notInFirstGroup.length}</strong>`,
+            `Second group: ${secondGroupTitle} (${secondGroupId}`,
+            `&nbsp;&nbsp; Total users: <strong>${secondGroupIds.length}</strong>`,
+            `&nbsp;&nbsp; Missing users: <strong>${notInSecondGroup.length}</strong>`
+        ];
+        $('#compareResults').html(resultMsg.join('<br/>'));
+
+        // Add the comparison chooser to the popup
+        const firstNotSecondBtn = $('<input />')
+            .addClass('rockstar-btn')
+            .attr('type', 'button')
+            .attr('value', 'Not In Group #2')
+            .attr('id', 'firstNotSecondBtn')
+            .attr('style', 'flex-grow: 1;')
+            .click(() => {
+                $('#userList tbody').empty();
+
+                notInSecondGroup.forEach(user => {
+                    const userRow = $(`<tr />`)
+                        .append(`<td>${user.profile.login}</td>`)
+                        .append(`<td>${user.profile.displayName}</td>`)
+                        .append(`<td>${user.id}</td>`);
+
+                    $('#userList tbody').append(userRow);
+                });
+
+                $('#userList thead').removeClass('rockstar-hidden');
+            });
+        const secondNotFirstBtn = $('<input />')
+            .addClass('rockstar-btn')
+            .attr('type', 'button')
+            .attr('value', 'Not In Group #1')
+            .attr('id', 'secondNotFirstBtn')
+            .attr('style', 'flex-grow: 1;')
+            .click(() => {
+                $('#userList tbody').empty();
+
+                notInFirstGroup.forEach(user => {
+                    const userRow = $(`<tr />`)
+                        .append(`<td>${user.profile.login}</td>`)
+                        .append(`<td>${user.profile.displayName}</td>`)
+                        .append(`<td>${user.id}</td>`);
+
+                    $('#userList tbody').append(userRow);
+                });
+
+                $('#userList thead').removeClass('rockstar-hidden');
+            });
+        const chooserButtons = $('<div />')
+            .addClass('rockstar-container')
+            .append(notInFirstGroup.length > 0 ? secondNotFirstBtn : '')
+            .append(notInSecondGroup.length > 0 ? firstNotSecondBtn : '');
+        const userListHeaders = $('<thead />')
+            .addClass('rockstar-hidden')
+            .append('<th>Login</th>')
+            .append('<th>Display Name</th>')
+            .append('<th>Id</th>');
+        const userList = $('<table />')
+            .addClass('rockstar-userlist-table')
+            .attr('id', 'userList')
+            .append(userListHeaders)
+            .append('<tbody />');
+
+        $('.rockstar-popup')
+            .append(chooserButtons)
+            .append(userList);
+    }
+
+    function addGroupSelectionCheckboxes(elements) {
+        elements.each((idx, elmnt) => {
+            // Add additional group selection checkboxes when loading more groups
+            waitForElement('a.data-list-pager-footer-link', (showMoreBtn) => {
+                showMoreBtn.click(() => {
+                    waitForElement('tbody tr[role="row"]:not(:has(input.rockstar-group-checkbox))', (elements) => {
+                        addGroupSelectionCheckboxes(elements.find('div.group-name-col'));
+                    }, 10);
+                });
+            }, 10);
+
+            // Check for an existing group selection checkbox
+            const alreadyExists = $(elmnt).find('input.rockstar-group-checkbox');
+            if (alreadyExists.length > 0) {
+                return;
+            }
+
+            var groupLink = $(elmnt).find('div.group-name-desc a');
+            var href = groupLink.attr('href');
+            var parts = href.split('/');
+            var groupId = parts[3];
+            var groupTitle = groupLink.text();
+
+            // Create subscript labels
+            const firstLabel = $('<sub>1</sub>')
+                .attr('id', `${groupId}_label`)
+                .attr('style', 'float: right;');
+            const secondLabel = $('<sub>2</sub>')
+                .attr('id', `${groupId}_label`)
+                .attr('style', 'float: right;');
+
+            // Retrieve the group Id
+            if (href.match('admin/group') && (parts.length == 4)) {
+
+                var compareCheckbox = $('<input type="checkbox" />')
+                    .addClass('rockstar-group-checkbox')
+                    .attr('id', groupId)
+                    .attr('title', 'Select group for compare')
+                    .attr('style', 'float: right;')
+                    .click(function(event) {
+                        // Retrieve current selections
+                        const firstSelectedGroupId = localStorage.getItem('firstGroupId');
+                        const secondSelectedGroupId = localStorage.getItem('secondGroupId');
+
+                        // Retrieve selected state and group Id
+                        const isChecked = $(event.target).prop('checked');
+                        const groupId = event.target.id || null;
+
+                        // Don't process null groupIds
+                        if (groupId === null) {
+                            return;
+                        }
+
+                        // Check for already selected first/second groups
+                        if (isChecked && firstSelectedGroupId !== null && secondSelectedGroupId !== null) {
+                            confirmMsg = 'First and second group already selected, replace first selection?';
+                            var response = confirm(confirmMsg);
+
+                            // If "Ok", then remove the current first group selection
+                            if (response) {
+                                // Uncheck the replaced first group
+                                $(`#${firstSelectedGroupId}`)
+                                    .prop('checked', false)
+                                    .siblings('sub').remove();
+                                localStorage.setItem('firstGroupId', groupId);
+                                localStorage.setItem('firstGroupTitle', groupTitle);
+                                $(event.target).after(firstLabel);
+                            } else {
+                                // Cancel this selection (uncheck the current group)
+                                $(event.target).prop('checked', false);
+                            }
+
+                            return;
+                        }
+
+                        if (isChecked) {
+                            // Set the appropriate group Id selection
+                            if (firstSelectedGroupId === null) {
+                                localStorage.setItem('firstGroupId', groupId);
+                                localStorage.setItem('firstGroupTitle', groupTitle);
+                                $(event.target).after(firstLabel);
+                            } else {
+                                localStorage.setItem('secondGroupId', groupId);
+                                localStorage.setItem('secondGroupTitle', groupTitle);
+                                $(event.target).after(secondLabel);
+                            }
+                        } else {
+                            // Remove the subscript 1/2 label
+                            $(event.target).siblings('sub').remove();
+
+                            // Remove the group selections when unselected
+                            if (firstSelectedGroupId === groupId) {
+                                localStorage.removeItem('firstGroupId');
+                                localStorage.removeItem('firstGroupTitle');
+                            } else if (secondSelectedGroupId === groupId) {
+                                localStorage.removeItem('secondGroupId');
+                                localStorage.removeItem('secondGroupTitle');
+                            }
+                        }
+                    });
+
+                // Find the parent TR (row), then last TD (cell) and append the checkbox
+                var lastCell = $(elmnt).parents('tr[role="row"]').find('td:last');
+                $(lastCell).append(compareCheckbox);
+
+                // Check the box IF this row matches an already stored group Id
+                const firstSelectedGroupId = localStorage.getItem('firstGroupId');
+                const secondSelectedGroupId = localStorage.getItem('secondGroupId');
+
+                if (firstSelectedGroupId !== null && groupId === firstSelectedGroupId) {
+                    compareCheckbox
+                        .prop('checked', true)
+                        .after(firstLabel);
+                }
+                if (secondSelectedGroupId !== null && groupId === secondSelectedGroupId) {
+                    compareCheckbox
+                        .prop('checked', true)
+                        .after(secondLabel);
+                }
+            }
+        });
+    }
+
     function enhanceDirectoryGroups() {
+        // Add the "compare" checkbox to the groups
+        waitForElement('tbody div.group-name-col', (elements) => {
+            addGroupSelectionCheckboxes(elements);
+        }, 10);
+
+        // Re-add the selection checkboxes after searching group(s) with magnifying glass
+        waitForElement('a.advanced-search-submit-button', (elements) => {
+            elements.click(() => {
+                waitForElement('tbody tr[role="row"]:not(:has(input.rockstar-group-checkbox))', (elements) => {
+                    addGroupSelectionCheckboxes(elements.find('div.group-name-col'));
+                }, 10);
+            });
+        }, 10);
+
+        // Re-add the selection checkboxes after searching group(s) with input box
+        waitForElement('textarea.advanced-search-box-input', (elements) => {
+            elements.keydown((event) => {
+                const keyCode = event.keyCode ? event.keyCode : event.which;
+                if (keyCode === 13) {
+                    waitForElement('tbody tr[role="row"]:not(:has(input.rockstar-group-checkbox))', (elements) => {
+                        addGroupSelectionCheckboxes(elements.find('div.group-name-col'));
+                    }, 10);
+                }
+            });
+        }, 10);
+
+        // Add first -> second and second -> first comparison toggle
+        // Add "Export" for results
+        createMenuItem('Compare Group Memberships', rockstarMenu, () => {
+            var groupSelectPopup = createPopup('Select Groups To Compare Memberships');
+            var groupForm = $('<form style="width: 500px;"></form>');
+            const firstSelectedGroupId = localStorage.getItem('firstGroupId');
+            const secondSelectedGroupId = localStorage.getItem('secondGroupId');
+            const firstSelectedGroupTitle = localStorage.getItem('firstGroupTitle');
+            const secondSelectedGroupTitle = localStorage.getItem('secondGroupTitle');
+
+            // Form controls
+            var firstCompareGroup = $('<input />')
+                .addClass('rockstar-input')
+                .attr('title', firstSelectedGroupTitle || '')
+                .attr('id', 'firstCompareGroup')
+                .attr('name', 'firstCompareGroup')
+                .attr('placeholder', 'Enter group ID');
+            var secondCompareGroup = $('<input />')
+                .addClass('rockstar-input')
+                .attr('title', secondSelectedGroupTitle || '')
+                .attr('id', 'secondCompareGroup')
+                .attr('name', 'secondCompareGroup')
+                .attr('placeholder', 'Enter group ID');
+            var compareBtn = $('<input />')
+                .addClass('rockstar-btn')
+                .attr('id', 'compareBtn')
+                .attr('type', 'submit')
+                .attr('value', 'Compare');
+            var compareCancelBtn = $('<input />')
+                .addClass('rockstar-btn')
+                .addClass('rockstar-hidden')
+                .attr('id', 'compareCancelBtn')
+                .attr('type', 'button')
+                .attr('value', 'Cancel');
+            var compareClearBtn = $('<input />')
+                .addClass('rockstar-btn')
+                .attr('id', 'compareClearBtn')
+                .attr('type', 'button')
+                .attr('value', 'Clear selections')
+                .attr('style', 'max-width: 140px;')
+                .click(() => {
+                    const clearSelections = confirm('Clear selected groups?');
+
+                    if (clearSelections) {
+                        // Clear the input boxes
+                        $('#firstCompareGroup')
+                            .attr('title', '')
+                            .val('');
+                        $('#secondCompareGroup')
+                            .attr('title', '')
+                            .val('');
+
+                        // Clear the local storage
+                        localStorage.removeItem('firstGroupId');
+                        localStorage.removeItem('firstGroupTitle');
+                        localStorage.removeItem('secondGroupId');
+                        localStorage.removeItem('secondGroupTitle');
+
+                        // Clear any currently selected checkboxes
+                        $('input.rockstar-group-checkbox')
+                            .prop('checked', false)
+                            .siblings('sub').remove();
+                    }
+                });
+            var btnContainer = $('<div />')
+                .addClass('rockstar-container-end')
+                .append(compareClearBtn)
+                .append(compareCancelBtn)
+                .append(compareBtn);
+            var compareStatusLabel = $('<hr/><div style="text-decoration: underline;">Status:</div>')
+            var compareStatus = $('<div id="compareStatus"></div>');
+            var compareResultsLabel = $('<hr/><div style="text-decoration: underline;">Results:</div>')
+            var compareResults = $('<div id="compareResults"></div>');
+
+            // Set the group Id values (if already pre-checked)
+            if (firstSelectedGroupId !== null) {
+                firstCompareGroup.val(firstSelectedGroupId);
+            }
+            if (secondSelectedGroupId !== null) {
+                secondCompareGroup.val(secondSelectedGroupId);
+            }
+
+            // Create input labels
+            var firstCompareLabel = $('<label>First Group Id:</label>')
+                .attr('for', 'firstCompareGroup')
+                .append(firstCompareGroup);
+            var secondCompareLabel = $('<label>Second Group Id:</label>')
+                .attr('for', 'secondCompareGroup')
+                .append(secondCompareGroup);
+
+            groupForm
+                .submit(event => {
+                    // Disable the compare button
+                    $('#compareBtn')
+                        .attr('value', 'Loading')
+                        .attr('disabled', true);
+                    $('#compareCancelBtn').removeClass('rockstar-hidden');
+
+                    let firstGroupUsers = [];
+                    let secondGroupUsers = [];
+
+                    var firstGroupId = firstCompareGroup.val();
+                    var secondGroupId = secondCompareGroup.val();
+
+                    // Retrieve list of users from the selected groups
+                    startGroupUserExport(firstGroupId, (users) => {
+                        firstGroupUsers = users;
+
+                        // Start export of second selected group
+                        startGroupUserExport(secondGroupId, (users) => {
+                            secondGroupUsers = users;
+
+                            $('#compareStatus').text('Both group memberships exported, see results below');
+
+                            // Only show diff if one of the groups has users
+                            if (firstGroupUsers.length > 0 || secondGroupUsers.length > 0) {
+                                displayGroupMembershipDiff(firstGroupUsers, secondGroupUsers);
+                            } else {
+                                $('#compareResults').text('Both groups have no users, nothing to compare');
+                            }
+
+                            // Re-enable the compare button
+                            $('#compareBtn')
+                                .attr('value', 'Compare')
+                                .attr('disabled', false);
+                            $('#compareCancelBtn').addClass('rockstar-hidden');
+                        })
+
+                    });
+
+                    // Stop default submit button action
+                    event.preventDefault();
+                })
+                .append(firstCompareLabel)
+                .append(secondCompareLabel)
+                .append(btnContainer)
+                .append(compareStatusLabel)
+                .append(compareStatus)
+                .append(compareResultsLabel)
+                .append(compareResults)
+                .appendTo(groupSelectPopup)
+                .find('#firstCompareGroup').focus();
+        });
+
         createMenuItem("Search Groups", rockstarMenu, () => {
             var popup = createPopup("Search Groups with Name Containing");
             var form = $("<form>Name <input class=name style='width: 300px'> " +
@@ -1234,7 +1725,7 @@
             const paths = 'apps,apps/${appId},apps/${appId}/groups,apps/${appId}/users,apps?filter=user.id eq "${userId}",authorizationServers,eventHooks,features,' +
                 'groups,groups/${groupId},groups/${groupId}/roles,groups/${groupId}/users,groups/rules,idps,inlineHooks,logs,mappings,policies?type=${type},' +
                 'meta/schemas/apps/${instanceId}/default,meta/schemas/user/default,meta/schemas/user/linkedObjects,meta/types/user,sessions/me,templates/sms,trustedOrigins,' +
-                'users,users/me,users/${userId},users/${userId}/appLinks,users/${userId}/factors,users/${userId}/groups,users/${userId}/roles,zones';
+                'users,users/me,users/${userId},users/${userId}/appLinks,users/${userId}/factors,users/${userId}/lifecycle/reset_factors,users/${userId}/groups,users/${userId}/roles,zones';
             datalist.innerHTML = paths.split(',').map(path => `<option>/api/v1/${path}`).join("") + "<option>/oauth2/v1/clients";
             var send = form.appendChild(document.createElement("input"));
             send.classList.add("rockstar-btn");
@@ -1250,7 +1741,7 @@
                 if (url.match(/\${.*}/) && location.pathname.match("/admin/(app|group|user)/")) {
                     var parts = location.pathname.split('/');
                     var id = location.pathname.match("/group/") ? parts[3] : parts[5];
-                    url = url.replace(/\${.*}/, id);
+                    url = url.replace(/\${[^}]+}/g, id);
                 }
                 requestJSON({ url, method: method.value, data: data.value }).then((objects, status, jqXHR) => {
                     $(results).html("<br>");
