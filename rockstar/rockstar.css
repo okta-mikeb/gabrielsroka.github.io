@@ -127,7 +127,8 @@
 }
 
 /* Change the background color of the dropdown button when the dropdown content is shown */
-.rockstar-btn:hover {
+.rockstar-btn:hover,
+.rockstar-btn.active {
     text-decoration: none;
     background-color: #1662dd;
     color: #ffffff;

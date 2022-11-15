@@ -649,7 +649,11 @@
             .attr('value', 'Not In Group #2')
             .attr('id', 'firstNotSecondBtn')
             .attr('style', 'flex-grow: 1;')
-            .click(() => {
+            .click((event) => {
+                // Activate this button, deactivate the other
+                $('#secondNotFirstBtn').removeClass('active');
+                $(event.target).addClass('active');
+
                 $('#userList tbody').empty();
 
                 notInSecondGroup.forEach(user => {
@@ -669,7 +673,11 @@
             .attr('value', 'Not In Group #1')
             .attr('id', 'secondNotFirstBtn')
             .attr('style', 'flex-grow: 1;')
-            .click(() => {
+            .click((event) => {
+                // Activate this button, deactivate the other
+                $('#firstNotSecondBtn').removeClass('active');
+                $(event.target).addClass('active');
+
                 $('#userList tbody').empty();
 
                 notInFirstGroup.forEach(user => {
