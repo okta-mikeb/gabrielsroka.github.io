@@ -20,6 +20,7 @@
     //     to Joseph about this one
     // 5 - Duplicate "Save" button on profile (and potentially other) screen
     //     at the top with the "Cancel" button
+    // 6 - Duplicate application configuration to new application
 
     let mainPopup;
     let rockstarMenu;
@@ -43,6 +44,11 @@
             enhanceDirectoryPerson();
         } else if (location.pathname.startsWith("/admin/app/")) {
             enhanceApplication();
+            // Logic only for Google Applications
+            if (location.pathname.startsWith("/admin/app/google")) {
+                console.log("Google App Enhance");
+                enhanceGoogleApplication();
+            }
         } else if (location.pathname === "/admin/groups") {
             enhanceDirectoryGroups();
         } else if (location.pathname === "/admin/access/admins") {
@@ -61,6 +67,7 @@
         // Add the API explorer menu item
         addAPIExplorer();
 
+        let logoAttempts = 5;
         function addLogoLabel(logoUrl, isPreview) {
             const isDev = location.hostname.startsWith("dev-");
             const envType = isPreview ? "preview" : isDev ? "dev" : "prod";
@@ -69,14 +76,13 @@
             let newLogo = $(`<img src="${logoUrl}" class="rockstar-logo">`);
 
             const oktaIcon = $(".okta-icon");
+            // const oktaIcon = $(".o-header--logo-container");
             if (oktaIcon.length === 1) {
                 oktaIcon.replaceWith(newLogo);
                 if (isPreview) {
                     newLogo.addClass("rockstar-desaturate");
                 }
 
-                // Insert rockstar menu after the "a" logo URL
-                $(".admin-header--logo-url").after(rockstarDropdown);
                 newLogo.after(label);
 
                 // Apply rockstar overrides to GRID
@@ -84,8 +90,16 @@
                 return;
             }
 
+            // Insert rockstar menu after the "a" logo URL
+            $(".admin-header--logo-url").after(rockstarDropdown);
+
             // Retry in 1 second
-            setTimeout(addLogoLabel, 1000, logoUrl, isPreview);
+            logoAttempts -= 1;
+            if (logoAttempts > 0) {
+                setTimeout(addLogoLabel, 1000, logoUrl, isPreview);
+            } else {
+                console.log('Failed to add logo...Okta logo moved?');
+            }
         }
 
         // Determine preview tenant
@@ -232,6 +246,97 @@
 
         createMenuItem("Show App", rockstarMenu, showApp);
 
+    }
+
+    function enhanceGoogleApplication() {
+        function getAppId() {
+            var path = location.pathname;
+            var pathparts = path.split('/');
+            if (path.match("admin/app") && (pathparts.length == 6 || pathparts.length == 7)) {
+                return pathparts[5];
+            }
+        }
+        let appId = getAppId();
+
+        function groupPush(userGroupId, existingAppGroupId, callback) {
+            if (userGroupId === '' || existingAppGroupId === '') {
+                return;
+            }
+
+            const url = `/api/internal/instance/${appId}/grouppush`;
+            const data = {
+                "status": "ACTIVE",
+                "userGroupId": userGroupId,
+                "existingAppGroupId": existingAppGroupId
+            };
+            postJSON({url, data}).then(() => {
+                callback();
+            });
+        }
+
+        function groupPushUI() {
+            var groupPushPopup = createPopup('Provide group push CSV');
+            var groupForm = $('<form style="width: 600px;"></form>');
+
+            var groupCSVDesc = $('<div/>')
+                .html('Paste CSV here. Format: &lt;Okta groupID&gt;,&lt;Google groupID&gt;<br/>*Note: no checks done for existing push groups!');
+            var groupPushCSV = $('<textarea />')
+                .addClass('rockstar-textarea')
+                .attr('title', 'Group Push CSV')
+                .attr('id', 'groupPushCSV')
+                .attr('name', 'groupPushCSV');
+            var createPushGroups = $('<input />')
+                .addClass('rockstar-btn')
+                .attr('style', 'margin-top: 6px;')
+                .attr('id', 'createPushGroups')
+                .attr('type', 'submit')
+                .attr('value', 'Create Push Groups');
+
+            groupForm
+                .submit(event => {
+                    const groupsCSV = $('#groupPushCSV').val().trim();
+
+                    if (groupsCSV !== '') {
+                        const groupPushRows = groupsCSV.split('\n');
+
+                        if (groupPushRows >= 380) {
+                            alert("Rate limit safety limit reached, maximum 380 groups at a time.");
+                            return;
+                        }
+
+                        let groupPushTotal = 0;
+                        $('#createPushGroups')
+                            .attr('value', 'Executing...')
+                            .attr('disabled', true);
+
+                        groupPushRows.forEach(row => {
+                            if (row.indexOf(',') !== -1) {
+                                const groupIDs = row.split(',');
+                                if (groupIDs.length === 2) {
+                                    console.log(groupIDs);
+                                    groupPush(groupIDs[0], groupIDs[1], () => {
+                                        groupPushTotal += 1;
+                                        $('#createPushGroups')
+                                            .attr('value', `Executing: ${groupPushTotal}/${groupPushRows.length}`);
+                                    });
+                                }
+                            }
+                        });
+
+                        alert("Reload the page to see push group changes.");
+                    }
+
+                    // Stop default submit button action
+                    event.preventDefault();
+                })
+                .append(groupCSVDesc)
+                .append(groupPushCSV)
+                .append(createPushGroups)
+                .appendTo(groupPushPopup)
+                .find('#groupPushCSV').focus();
+        }
+
+        createMenuItem('Group Push', rockstarMenu, groupPushUI);
     }
 
     function enhanceDirectoryPeople() {
@@ -608,6 +713,8 @@
     function displayGroupMembershipDiff(firstGroupUsers, secondGroupUsers) {
         $('#compareResults').text('Comparing group memberships...');
 
+        // TODO: Consolidate the comparison options into a single JSON object
+        // TODO: Make the group Id/title Okta tenant specific
         const firstGroupId = localStorage.getItem('firstGroupId');
         const firstGroupTitle = localStorage.getItem('firstGroupTitle');
         const secondGroupId = localStorage.getItem('secondGroupId');
@@ -658,6 +765,7 @@
 
                 notInSecondGroup.forEach(user => {
                     const userRow = $(`<tr />`)
+                        .append(`<td>${user.status}</td>`)
                         .append(`<td>${user.profile.login}</td>`)
                         .append(`<td>${user.profile.displayName}</td>`)
                         .append(`<td>${user.id}</td>`);
@@ -682,6 +790,7 @@
 
                 notInFirstGroup.forEach(user => {
                     const userRow = $(`<tr />`)
+                        .append(`<td>${user.status}</td>`)
                         .append(`<td>${user.profile.login}</td>`)
                         .append(`<td>${user.profile.displayName}</td>`)
                         .append(`<td>${user.id}</td>`);
@@ -697,6 +806,7 @@
             .append(notInSecondGroup.length > 0 ? firstNotSecondBtn : '');
         const userListHeaders = $('<thead />')
             .addClass('rockstar-hidden')
+            .append('<th>Status</th>')
             .append('<th>Login</th>')
             .append('<th>Display Name</th>')
             .append('<th>Id</th>');
@@ -1539,7 +1649,7 @@
             //             $('<div>Show SSO</div>').appendTo('.app-settings--launch-app').click(console.log);
             //         }, 1000);
             //     })
-            // } else 
+            // } else
             if (labels.length > 0) { // Button labels on old Okta homepage
                 for (var i = 0; i < labels.length; i++) {
                     if (!labels[i].innerHTML.match(label)) {
@@ -1855,11 +1965,11 @@
             return;
         }
         baseUrl = baseUrl.innerText;
-    
+
         // TODO: in the resulting JSON, each "id", url [etc?] should be clickable, too.
         // TODO: show HTTP response headers (need to make a new request?)
         // TODO: eg, for /api/v1/users, show q/filter/search params in a textbox.
-    
+
         $(".api-uri-get").each(function () {
             var get = $(this);
             var url = baseUrl + get.text().replace("GET ", "").replace("${userId}", "me");
