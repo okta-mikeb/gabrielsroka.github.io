@@ -274,17 +274,50 @@
             });
         }
 
+        function groupNameSearch(groupName, callback) {
+            // /api/internal/instance/0oacthr6w8HtcJzKW1d7/grouppush/autocompleteAppGroups?limit=10&q=Cool+new+group
+
+            const qs = new URLSearchParams({
+                limit: 1,
+                q: groupName
+            });
+            const url = `/api/internal/instance/${appId}/grouppush/autocompleteAppGroups?${qs.toString()}`;
+
+            getJSON(url).then(resp => {
+                // Find the exact match group
+                const filteredResp = resp.filter(group => group.appGroupName === groupName);
+
+                const appGroupId = filteredResp.length && filteredResp.length === 1 ?
+                    filteredResp[0].appGroupId : null;
+
+                // Send back appGroupId OR null (if not found or more than one match)
+                callback({
+                    appGroupId: appGroupId,
+                    message: resp.length && resp.length > 1 ?
+                        'Multiple group name matches found' : 'No group name match found'
+                });
+            });
+        }
+
         function groupPushUI() {
             var groupPushPopup = createPopup('Provide group push CSV');
             var groupForm = $('<form style="width: 600px;"></form>');
 
             var groupCSVDesc = $('<div/>')
-                .html('Paste CSV here. Format: &lt;Okta groupID&gt;,&lt;Google groupID&gt;<br/>*Note: no checks done for existing push groups!');
+                .html('Paste CSV here. Format: &lt;Okta groupID&gt;,&lt;Google group name&gt;<br/>*Note: no checks done for existing push groups!');
             var groupPushCSV = $('<textarea />')
                 .addClass('rockstar-textarea')
                 .attr('title', 'Group Push CSV')
                 .attr('id', 'groupPushCSV')
                 .attr('name', 'groupPushCSV');
+            var groupSkippedDesc = $('<div/>')
+                .addClass('rockstar-hidden')
+                .html('Skipped group push results:');
+            var groupPushSkipped = $('<textarea />')
+                .addClass('rockstar-textarea rockstar-hidden')
+                .attr('title', 'Group Push Skipped')
+                .attr('id', 'groupPushSkipped')
+                .attr('name', 'groupPushSkipped');
             var createPushGroups = $('<input />')
                 .addClass('rockstar-btn')
                 .attr('style', 'margin-top: 6px;')
@@ -294,30 +327,47 @@
 
             groupForm
                 .submit(event => {
+                    // Stop default submit button action
+                    event.preventDefault();
+
                     const groupsCSV = $('#groupPushCSV').val().trim();
 
                     if (groupsCSV !== '') {
+                        // One group push config per row
                         const groupPushRows = groupsCSV.split('\n');
 
-                        if (groupPushRows >= 380) {
-                            alert("Rate limit safety limit reached, maximum 380 groups at a time.");
+                        // Limit the maximum number of push groups per run
+                        if (groupPushRows >= 200) {
+                            alert("Safety limit reached, maximum 200 groups at a time.");
                             return;
                         }
 
                         let groupPushTotal = 0;
+                        let groupPushSkippedArr = [];
                         $('#createPushGroups')
-                            .attr('value', 'Executing...')
+                            .attr('value', 'Processing...')
                             .attr('disabled', true);
+
+                        groupSkippedDesc.removeClass('rockstar-hidden');
+                        groupPushSkipped.removeClass('rockstar-hidden');
 
                         groupPushRows.forEach(row => {
                             if (row.indexOf(',') !== -1) {
-                                const groupIDs = row.split(',');
-                                if (groupIDs.length === 2) {
-                                    console.log(groupIDs);
-                                    groupPush(groupIDs[0], groupIDs[1], () => {
-                                        groupPushTotal += 1;
-                                        $('#createPushGroups')
-                                            .attr('value', `Executing: ${groupPushTotal}/${groupPushRows.length}`);
+                                const groupInfo = row.split(',');
+                                if (groupInfo.length === 2) {
+                                    // Update the processing message
+                                    groupPushTotal += 1;
+                                    $('#createPushGroups')
+                                        .attr('value', `Processing: ${groupPushTotal}/${groupPushRows.length}`);
+
+                                    groupNameSearch(groupInfo[1], resp => {
+                                        if (resp.appGroupId === null) {
+                                            groupPushSkippedArr.push(`${resp.message}: ${groupInfo[1]}`);
+                                            groupPushSkipped.val(groupPushSkippedArr.join('\n'));
+                                        } else {
+                                            // Process the group push with the group Ids
+                                            groupPush(groupInfo[0], resp.appGroupId, () => {});
+                                        }
                                     });
                                 }
                             }
@@ -325,12 +375,11 @@
 
                         alert("Reload the page to see push group changes.");
                     }
-
-                    // Stop default submit button action
-                    event.preventDefault();
                 })
                 .append(groupCSVDesc)
                 .append(groupPushCSV)
+                .append(groupSkippedDesc)
+                .append(groupPushSkipped)
                 .append(createPushGroups)
                 .appendTo(groupPushPopup)
                 .find('#groupPushCSV').focus();
@@ -1843,7 +1892,8 @@
             const paths = 'apps,apps/${appId},apps/${appId}/groups,apps/${appId}/users,apps?filter=user.id eq "${userId}",authorizationServers,eventHooks,features,' +
                 'groups,groups/${groupId},groups/${groupId}/roles,groups/${groupId}/users,groups/rules,idps,inlineHooks,logs,mappings,policies?type=${type},' +
                 'meta/schemas/apps/${instanceId}/default,meta/schemas/user/default,meta/schemas/user/linkedObjects,meta/types/user,sessions/me,templates/sms,trustedOrigins,' +
-                'users,users/me,users/${userId},users/${userId}/appLinks,users/${userId}/factors,users/${userId}/lifecycle/reset_factors,users/${userId}/groups,users/${userId}/roles,zones';
+                'users,users/me,users/${userId},users/${userId}/appLinks,users/${userId}/factors,users/${userId}/lifecycle/reset_factors,users/${userId}/lifecycle/activate?sendEmail=false,' +
+                'users/${userId}/groups,users/${userId}/roles,zones';
             datalist.innerHTML = paths.split(',').map(path => `<option>/api/v1/${path}`).join("") + "<option>/oauth2/v1/clients";
             var send = form.appendChild(document.createElement("input"));
             send.classList.add("rockstar-btn");
